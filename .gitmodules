@@ -1,0 +1,4 @@
+[submodule "tests/mini.nvim"]
+	path = tests/mini.nvim
+	url = https://github.com/nvim-mini/mini.nvim
+    branch = stable
