@@ -90,10 +90,10 @@ end
 function M.entries(parsed)
     local result = {}
     for codepoint, name in pairs(parsed.names) do
-        result[#result + 1] = {
+        table.insert(result, {
             codepoint = codepoint,
             name = name,
-        }
+        })
     end
     table.sort(result, function(a, b)
         return a.codepoint < b.codepoint

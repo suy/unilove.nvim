@@ -18,7 +18,7 @@ function M.codepoints(text)
 
     local result = {}
     for _, start in ipairs(vim.str_utf_pos(text)) do
-        result[#result + 1] = vim.fn.char2nr(text:sub(start), true)
+        table.insert(result, vim.fn.char2nr(text:sub(start), true))
     end
     return result
 end
