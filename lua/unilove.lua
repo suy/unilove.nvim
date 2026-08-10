@@ -51,15 +51,11 @@ function M.cursor_grapheme()
     return M.grapheme_at(line, column)
 end
 
-local function prettify(char, codepoint)
+local function prettify(codepoint)
     if codepoint == 0 then
         return 'NUL'
-    elseif codepoint < 32 then
-        return '^' .. codepoint_to_character(64 + codepoint)
-    elseif codepoint == 127 then
-        return '^?'
     end
-    return tostring(char)
+    return vim.fn.strtrans(codepoint_to_character(codepoint))
 end
 
 local function to_octal(codepoint)
@@ -68,8 +64,7 @@ end
 
 function M.format_one(codepoint)
     local parts = {}
-    local char = codepoint_to_character(codepoint)
-    table.insert(parts, prettify(char, codepoint))
+    table.insert(parts, prettify(codepoint))
     table.insert(parts, tostring(codepoint))
 
     if config.show_octal and codepoint < 256 then
