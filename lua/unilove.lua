@@ -8,17 +8,52 @@ end
 
 function M.first_grapheme(text)
     assert(type(text) == 'string')
+    -- vim.fn.matchstr treats NUL bytes as string terminators, so it fails when
+    -- a NUL appears after the first character. Truncate at the NUL byte, then
+    -- match on the prefix. The text is already the start of where the cursor
+    -- is, so we don't need to look past a NUL for the first grapheme.
+    local null_pos = text:find('\0')
+    if null_pos then
+        if null_pos == 1 then
+            return '\0'
+        end
+        text = text:sub(1, null_pos - 1)
+    end
     return vim.fn.matchstr(text, '.')
 end
 
-function M.codepoints(text)
-    if text == '\0' then
-        return { 0 }
+-- NB: This is only called on the first byte of a sequence, so continuation
+-- bytes (0x80-0xBF) are never passed! That's why the first threshold is 0xC0
+-- instead of 0x80, as a quick `man utf8` read would suggest.
+local function codepoint_length(byte)
+    if     byte < 0xC0 then return 1
+    elseif byte < 0xE0 then return 2
+    elseif byte < 0xF0 then return 3
+    else return 4
     end
+end
 
+-- Like `vim.str_utf_pos`, but safe for strings containing null bytes.
+function M.codepoint_positions(text)
+    local positions = {}
+    local i = 1
+    while i <= #text do
+        table.insert(positions, i)
+        i = i + codepoint_length(text:byte(i))
+    end
+    return positions
+end
+
+function M.codepoints(text)
     local result = {}
-    for _, start in ipairs(vim.str_utf_pos(text)) do
-        table.insert(result, vim.fn.char2nr(text:sub(start), true))
+    for _, start in ipairs(M.codepoint_positions(text)) do
+        local byte = text:byte(start)
+        if byte < 0x80 then
+            table.insert(result, byte)
+        else
+            local length = codepoint_length(byte)
+            table.insert(result, vim.fn.char2nr(text:sub(start, start + length - 1), true))
+        end
     end
     return result
 end
@@ -30,7 +65,7 @@ function M.grapheme_at(line, column)
         return '\n'
     end
 
-    local codepoint_starts = vim.str_utf_pos(line)
+    local codepoint_starts = M.codepoint_positions(line)
     for _, start in ipairs(codepoint_starts) do
         if start > column then
             break
@@ -53,7 +88,7 @@ end
 
 local function prettify(codepoint)
     if codepoint == 0 then
-        return 'NUL'
+        return 'NUL' -- ?? So short??
     end
     return vim.fn.strtrans(codepoint_to_character(codepoint))
 end

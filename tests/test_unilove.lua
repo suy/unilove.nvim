@@ -48,6 +48,13 @@ T['first_grapheme()']['returns an empty string for empty text'] = function()
     eq(unilove.first_grapheme(''), '')
 end
 
+T['first_grapheme()']['is able to accept null bytes'] = function()
+    eq(unilove.first_grapheme('\0'), '\0')
+    eq(unilove.first_grapheme('\0ab'), '\0')
+    eq(unilove.first_grapheme('a\0b'), 'a')
+    eq(unilove.first_grapheme('ab\0'), 'a')
+end
+
 T['first_grapheme()']['works on an ASCII-only string'] = function()
     eq(unilove.first_grapheme('abc'), 'a')
     eq(unilove.first_grapheme('@bc'), '@')
