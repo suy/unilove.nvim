@@ -91,6 +91,40 @@ end
 
 --------------------------------------------------------------------------------
 
+T['codepoint_positions()'] = new_set()
+
+T['codepoint_positions()']['returns the start of each codepoint in valid text'] = function()
+    eq(unilove.codepoint_positions('A' .. thumbs_up .. 'a'), { 1, 2, 6 })
+    eq(unilove.codepoint_positions('abc'), { 1, 2, 3 })
+end
+
+T['codepoint_positions()']['walks embedded null bytes'] = function()
+    eq(unilove.codepoint_positions('a\0b'), { 1, 2, 3 })
+end
+
+-- Invalid sequences follow `vim.str_utf_pos`: a lead byte interrupted by a
+-- non-continuation byte stands alone, and the walk is byte-wise from there;
+-- a sequence truncated only by the end of the string consumes its partial run
+-- of continuation bytes. This way no byte of the line is ever skipped.
+T['codepoint_positions()']['leaves an interrupted lead byte standalone'] = function()
+    eq(unilove.codepoint_positions(string.char(0xC3) .. 'A'), { 1, 2 })
+    eq(unilove.codepoint_positions(string.char(0xC3) .. 'abc'), { 1, 2, 3, 4 })
+    eq(unilove.codepoint_positions(string.char(0xE2, 0x41, 0x42)), { 1, 2, 3 })
+    eq(unilove.codepoint_positions(string.char(0xE2, 0x82, 0x41)), { 1, 2, 3 })
+    eq(unilove.codepoint_positions(string.char(0xF0, 0x9F, 0x41, 0x42)), { 1, 2, 3, 4 })
+end
+
+T['codepoint_positions()']['consumes complete sequences, even overlong or out of range'] = function()
+    eq(unilove.codepoint_positions(string.char(0xF5, 0x80, 0x80, 0x80) .. 'a'), { 1, 5 })
+    eq(unilove.codepoint_positions(string.char(0xC0, 0x80) .. 'a'), { 1, 3 })
+    eq(unilove.codepoint_positions(string.char(0xC3, 0x80, 0x80) .. 'a'), { 1, 3, 4 })
+end
+
+T['codepoint_positions()']['consumes sequences truncated only by the end of the string'] = function()
+    eq(unilove.codepoint_positions(string.char(0xE2, 0x82)), { 1 })
+    eq(unilove.codepoint_positions(string.char(0xF0, 0x80)), { 1 })
+end
+
 T['codepoints()'] = new_set()
 
 T['codepoints()']['returns the codepoints in a string'] = function()
@@ -113,6 +147,15 @@ end
 
 T['codepoints()']['handles NUL, which Lua string iteration omits'] = function()
     eq(unilove.codepoints(null), { 0 })
+end
+
+T['codepoints()']['keeps null bytes inside text'] = function()
+    eq(unilove.codepoints('a\0b'), { 0x61, 0x00, 0x62 })
+end
+
+T['codepoints()']['reports an invalid lead byte as its own value, losing no characters'] = function()
+    eq(unilove.codepoints(string.char(0xC3) .. 'abc'), { 0xC3, 0x61, 0x62, 0x63 })
+    eq(unilove.codepoints(string.char(0xE2, 0x82, 0x41)), { 0xE2, 0x82, 0x41 })
 end
 
 T['codepoints()']['returns an empty array for an empty string'] = function()
@@ -173,6 +216,18 @@ T['grapheme_at()']['uses a newline for empty lines and columns past the line'] =
     eq(unilove.grapheme_at('', 1), newline)
     eq(unilove.grapheme_at('a', 2), newline)
     eq(unilove.grapheme_at(thumbs_up, #thumbs_up + 1), newline)
+end
+
+T['grapheme_at()']['finds the character after an invalid lead byte'] = function()
+    local text = string.char(0xC3) .. 'abc'
+    eq(unilove.grapheme_at(text, 1), string.char(0xC3))
+    eq(unilove.grapheme_at(text, 2), 'a')
+    eq(unilove.grapheme_at(text, 3), 'b')
+    eq(unilove.grapheme_at(text, 4), 'c')
+end
+
+T['grapheme_at()']['returns the null byte inside a line'] = function()
+    eq(unilove.grapheme_at('a\0b', 2), '\0')
 end
 
 T['format_one()'] = new_set()

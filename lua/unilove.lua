@@ -27,19 +27,46 @@ end
 -- instead of 0x80, as a quick `man utf8` read would suggest.
 local function codepoint_length(byte)
     if     byte < 0xC0 then return 1
+        -- continuation bytes
     elseif byte < 0xE0 then return 2
     elseif byte < 0xF0 then return 3
     else return 4
     end
 end
 
--- Like `vim.str_utf_pos`, but safe for strings containing null bytes.
+-- Length in bytes of the UTF-8 sequence starting at `start`. Mirrors how
+-- `vim.str_utf_pos` treats invalid input, so that no byte is ever skipped:
+-- sequences interrupted by a non-continuation byte leave the lead byte
+-- standalone (byte-wise), while sequences truncated only by the end of the
+-- string consume their partial run of continuation bytes.
+local function sequence_length(text, start)
+    local byte = text:byte(start)
+    if byte < 0x80 then
+        return 1
+    end
+    local expected = codepoint_length(byte)
+    local length = 1
+    while length < expected do
+        local following = text:byte(start + length)
+        if following == nil then
+            return length
+        end
+        if following < 0x80 or following > 0xBF then
+            return 1
+        end
+        length = length + 1
+    end
+    return expected
+end
+
+-- Like `vim.str_utf_pos`, but safe for strings containing null bytes, and
+-- matching its handling of invalid sequences.
 function M.codepoint_positions(text)
     local positions = {}
     local i = 1
     while i <= #text do
         table.insert(positions, i)
-        i = i + codepoint_length(text:byte(i))
+        i = i + sequence_length(text, i)
     end
     return positions
 end
@@ -51,7 +78,7 @@ function M.codepoints(text)
         if byte < 0x80 then
             table.insert(result, byte)
         else
-            local length = codepoint_length(byte)
+            local length = sequence_length(text, start)
             table.insert(result, vim.fn.char2nr(text:sub(start, start + length - 1), true))
         end
     end
