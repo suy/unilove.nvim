@@ -13,6 +13,9 @@
     --lead2:    #c2955c; /* sand         */
     --lead3:    #bf7a55; /* clay         */
     --lead4:    #ad5f77; /* muted plum   */
+    --legacy4:  #8f7d92; /* grey-mauve — 4-byte leads past U+10FFFF */
+    --legacy5:  #9c959b; /* grey-mauve — 5-byte leads               */
+    --legacy6:  #a9a5a9; /* grey-mauve — 6-byte leads               */
     --invalid:  #8f4d4d; /* dark red     */
     --ink:   #2b2f33;
     --muted: #6b7075;
@@ -49,6 +52,18 @@
   .ruler span:first-child { transform: none; }
   .ruler span:last-child { transform: translateX(-100%); }
 
+  /* Unicode's ceiling: dashed marker at the F4/F5 boundary (245/256). */
+  .map { position: relative; padding-top: 24px; }
+  .limit {
+    position: absolute; top: 24px; height: 40px; left: 95.703125%;
+    border-left: 2px dashed var(--muted);
+    pointer-events: none;
+  }
+  .limit span {
+    position: absolute; bottom: calc(100% + 3px); right: 0;
+    font-size: 11px; color: var(--muted); white-space: nowrap;
+  }
+
   /* Annotated rows: proportional bar | range | explanation. */
   .rows {
     display: grid;
@@ -73,7 +88,7 @@
   <h1>UTF-8 — the role of each byte value</h1>
   <p class="subtitle">All 256 byte values, grouped by the role they can play in a sequence. Box width is proportional to the number of values in each range.</p>
 
-  <section>
+  <section class="map">
     <div class="strip">
       <div style="width:50%;       background:var(--ascii)"    title="0x00–0x7F · 128 values · ASCII"><span class="lbl">00–7F ASCII</span></div>
       <div style="width:25%;       background:var(--cont)"     title="0x80–0xBF · 64 values · continuation byte"><span class="lbl">80–BF cont.</span></div>
@@ -81,8 +96,12 @@
       <div style="width:11.71875%; background:var(--lead2)"    title="0xC2–0xDF · 30 values · 2-byte lead"><span class="lbl">C2–DF</span></div>
       <div style="width:6.25%;     background:var(--lead3)"    title="0xE0–0xEF · 16 values · 3-byte lead"><span class="lbl">E0–EF</span></div>
       <div style="width:1.953125%; background:var(--lead4)"    title="0xF0–0xF4 · 5 values · 4-byte lead"></div>
-      <div style="width:4.296875%; background:var(--invalid)"  title="0xF5–0xFF · 11 values · never valid"></div>
+      <div style="width:1.171875%; background:var(--legacy4)"  title="0xF5–0xF7 · 3 values · 4-byte lead, codepoint past U+10FFFF (original spec)"></div>
+      <div style="width:1.5625%;   background:var(--legacy5)"  title="0xF8–0xFB · 4 values · 5-byte lead (original spec)"></div>
+      <div style="width:0.78125%;  background:var(--legacy6)"  title="0xFC–0xFD · 2 values · 6-byte lead (original spec)"></div>
+      <div style="width:0.78125%;  background:var(--invalid)"  title="0xFE–0xFF · 2 values · never valid in any version"></div>
     </div>
+    <div class="limit"><span>U+10FFFF — Unicode's ceiling</span></div>
     <div class="ruler mono">
       <span style="left:0">00</span><span style="left:25%">40</span><span style="left:50%">80</span><span style="left:75%">C0</span><span style="left:100%">FF</span>
     </div>
@@ -115,13 +134,25 @@
     <div class="desc"><p><code>11110xxx</code>. Starts a 4-byte sequence (three continuations): U+10000–U+10FFFF. Everything outside the BMP — emoji included.</p>
       <p class="note">F0 needs second byte ≥ 90 (anti-overlong); F4 needs ≤ 8F (nothing above U+10FFFF).</p></div>
 
-    <div class="track"><div class="bar" style="width:4.296875%; background:var(--invalid)"></div></div>
-    <div class="range"><code>F5–FF</code><span class="count">11 values · 4.30%</span></div>
-    <div class="desc"><p>Never valid. F5–F7 would encode beyond U+10FFFF; F8–FD are the retired 5- and 6-byte leads of the original 1984 design; FE–FF never had a meaning.</p></div>
+    <div class="track"><div class="bar" style="width:1.171875%; background:var(--legacy4)"></div></div>
+    <div class="range"><code>F5–F7</code><span class="count">3 values · 1.17%</span></div>
+    <div class="desc"><p>Same <code>11110xxx</code> shape as F0–F4, but the payload lands past Unicode's limit: U+140000–U+1FFFFF. Well-formed in the original spec; rejected by modern UTF-8.</p></div>
+
+    <div class="track"><div class="bar" style="width:1.5625%; background:var(--legacy5)"></div></div>
+    <div class="range"><code>F8–FB</code><span class="count">4 values · 1.56%</span></div>
+    <div class="desc"><p><code>111110xx</code>. 5-byte leads: U+200000–U+3FFFFFF. Original spec only — modern UTF-8 stops at 4 bytes.</p></div>
+
+    <div class="track"><div class="bar" style="width:0.78125%; background:var(--legacy6)"></div></div>
+    <div class="range"><code>FC–FD</code><span class="count">2 values · 0.78%</span></div>
+    <div class="desc"><p><code>1111110x</code>. 6-byte leads: U+40000000–U+7FFFFFFF — the top of the original design, which serialized all of UCS-4 (2<sup>31</sup> codepoints).</p></div>
+
+    <div class="track"><div class="bar" style="width:0.78125%; background:var(--invalid)"></div></div>
+    <div class="range"><code>FE–FF</code><span class="count">2 values · 0.78%</span></div>
+    <div class="desc"><p><code>1111111x</code> — the lead-bit scheme runs out: no 0 remains to separate the marker from the payload. Never valid in any version.</p></div>
   </section>
 
   <footer>
-    <p>Strict UTF-8 per RFC 3629. For contrast: lenient decoders accept more — Neovim's built-in <code>vim.str_utf_pos</code>, for one, consumes C0- and F5-led sequences as complete. Widths are exact fractions of 256 (e.g. C2–DF = 30/256 = 11.71875%). To edit: each box's width and color are inline on its <code>&lt;div&gt;</code>; nothing is computed.</p>
+    <p>Two specs are layered here. Modern UTF-8 (RFC 3629, 2003): sequences up to 4 bytes, lead bytes up to F4, no overlongs, no surrogates — because Unicode stops at U+10FFFF. The original design (Thompson &amp; Pike, 1992; RFC 2279, 1998) serialized all of UCS-4: 5- and 6-byte sequences, leads up to 0xFD, codepoints up to U+7FFFFFFF. The boxes past F4 follow that original scheme — which is also what the utf8(7) man page describes. For contrast, lenient decoders accept even more: Neovim's built-in <code>vim.str_utf_pos</code> consumes C0- and F5-led sequences as complete. Widths are exact fractions of 256 (e.g. C2–DF = 30/256 = 11.71875%). To edit: each box's width and color are inline on its <code>&lt;div&gt;</code>; nothing is computed.</p>
   </footer>
 </main>
 </body>
