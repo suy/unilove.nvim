@@ -38,8 +38,10 @@
     font-size: .92em;
   }
 
-  /* Full byte space strip (0x00-0xFF): one segment per range, widths exact. */
+  /* Byte-space map in two lines: ASCII above, the rest below.
+     Each line is stretched to the full width; per-line rulers underneath. */
   .strip { display: flex; height: 40px; border-radius: 4px; overflow: hidden; }
+  .strip2 { margin-top: 34px; }
   .strip > div { position: relative; }
   .strip .lbl {
     position: absolute; inset: 0;
@@ -52,19 +54,21 @@
   .ruler span:first-child { transform: none; }
   .ruler span:last-child { transform: translateX(-100%); }
 
-  /* Unicode's ceiling: dashed marker at the F4/F5 boundary (245/256). */
-  .map { position: relative; padding-top: 24px; }
+  /* Unicode's ceiling: dashed marker at the F4/F5 boundary of line 2.
+     F5 starts 117/128 into the non-ASCII half → left: 91.40625%. */
+  .map { position: relative; }
   .limit {
-    position: absolute; top: 24px; height: 40px; left: 95.703125%;
+    position: absolute; top: 63px; height: 77px; left: 91.40625%;
     border-left: 2px dashed var(--muted);
     pointer-events: none;
   }
   .limit span {
-    position: absolute; bottom: calc(100% + 3px); right: 0;
+    position: absolute; top: 3px; right: 0;
     font-size: 11px; color: var(--muted); white-space: nowrap;
   }
 
-  /* Annotated rows: proportional bar | range | explanation. */
+  /* Annotated rows: proportional bar | range | explanation.
+     Track scale: 0–50% of the byte space — ASCII (128 values) fills a track. */
   .rows {
     display: grid;
     grid-template-columns: minmax(240px, 1.1fr) minmax(170px, auto) minmax(300px, 1.6fr);
@@ -72,6 +76,11 @@
     align-items: center;
     margin-top: 2.5rem;
   }
+  .scale-ruler { position: relative; height: 15px; font-size: 10.5px; color: var(--muted); }
+  .scale-ruler span { position: absolute; top: 0; transform: translateX(-50%); }
+  .scale-ruler span:first-child { transform: none; }
+  .scale-ruler span:last-child { transform: translateX(-100%); }
+  .scale-caption { color: var(--muted); font-size: .82em; text-align: right; }
   .track { background: var(--track); border-radius: 3px; height: 26px; position: relative; }
   .bar { position: absolute; top: 0; bottom: 0; left: 0; border-radius: 3px; }
   .range { white-space: nowrap; }
@@ -86,73 +95,86 @@
 <body>
 <main>
   <h1>UTF-8 — the role of each byte value</h1>
-  <p class="subtitle">All 256 byte values, grouped by the role they can play in a sequence. Box width is proportional to the number of values in each range.</p>
+  <p class="subtitle">All 256 byte values, grouped by the role they can play in a sequence. The map is split in two lines — ASCII above, everything else below — each stretched to the full width; the bars further down are scaled against the ASCII maximum (50%).</p>
 
   <section class="map">
     <div class="strip">
-      <div style="width:50%;       background:var(--ascii)"    title="0x00–0x7F · 128 values · ASCII"><span class="lbl">00–7F ASCII</span></div>
-      <div style="width:25%;       background:var(--cont)"     title="0x80–0xBF · 64 values · continuation byte"><span class="lbl">80–BF cont.</span></div>
-      <div style="width:0.78125%;  background:var(--overlong)" title="0xC0–0xC1 · 2 values · never valid (overlong-only leads)"></div>
-      <div style="width:11.71875%; background:var(--lead2)"    title="0xC2–0xDF · 30 values · 2-byte lead"><span class="lbl">C2–DF</span></div>
-      <div style="width:6.25%;     background:var(--lead3)"    title="0xE0–0xEF · 16 values · 3-byte lead"><span class="lbl">E0–EF</span></div>
-      <div style="width:1.953125%; background:var(--lead4)"    title="0xF0–0xF4 · 5 values · 4-byte lead"></div>
-      <div style="width:1.171875%; background:var(--legacy4)"  title="0xF5–0xF7 · 3 values · 4-byte lead, codepoint past U+10FFFF (original spec)"></div>
-      <div style="width:1.5625%;   background:var(--legacy5)"  title="0xF8–0xFB · 4 values · 5-byte lead (original spec)"></div>
-      <div style="width:0.78125%;  background:var(--legacy6)"  title="0xFC–0xFD · 2 values · 6-byte lead (original spec)"></div>
-      <div style="width:0.78125%;  background:var(--invalid)"  title="0xFE–0xFF · 2 values · never valid in any version"></div>
+      <div style="width:100%; background:var(--ascii)" title="0x00–0x7F · 128 values · ASCII"><span class="lbl">00–7F ASCII — half of all byte values</span></div>
     </div>
-    <div class="limit"><span>U+10FFFF — Unicode's ceiling</span></div>
     <div class="ruler mono">
-      <span style="left:0">00</span><span style="left:25%">40</span><span style="left:50%">80</span><span style="left:75%">C0</span><span style="left:100%">FF</span>
+      <span style="left:0">00</span><span style="left:25%">20</span><span style="left:50%">40</span><span style="left:75%">60</span><span style="left:100%">7F</span>
     </div>
+
+    <div class="strip strip2">
+      <div style="width:50%;      background:var(--cont)"     title="0x80–0xBF · 64 values · continuation byte"><span class="lbl">80–BF continuation</span></div>
+      <div style="width:1.5625%; background:var(--overlong)" title="0xC0–0xC1 · 2 values · never valid (overlong-only leads)"></div>
+      <div style="width:23.4375%; background:var(--lead2)"    title="0xC2–0xDF · 30 values · 2-byte lead"><span class="lbl">C2–DF</span></div>
+      <div style="width:12.5%;    background:var(--lead3)"    title="0xE0–0xEF · 16 values · 3-byte lead"><span class="lbl">E0–EF</span></div>
+      <div style="width:3.90625%; background:var(--lead4)"    title="0xF0–0xF4 · 5 values · 4-byte lead"><span class="lbl">F0–F4</span></div>
+      <div style="width:2.34375%; background:var(--legacy4)"  title="0xF5–0xF7 · 3 values · 4-byte lead, codepoint past U+10FFFF (original spec)"></div>
+      <div style="width:3.125%;   background:var(--legacy5)"  title="0xF8–0xFB · 4 values · 5-byte lead (original spec)"></div>
+      <div style="width:1.5625%;  background:var(--legacy6)"  title="0xFC–0xFD · 2 values · 6-byte lead (original spec)"></div>
+      <div style="width:1.5625%;  background:var(--invalid)"  title="0xFE–0xFF · 2 values · never valid in any version"></div>
+    </div>
+    <div class="ruler mono">
+      <span style="left:0">80</span><span style="left:25%">A0</span><span style="left:50%">C0</span><span style="left:75%">E0</span><span style="left:100%">FF</span>
+    </div>
+
+    <div class="limit"><span>U+10FFFF — Unicode's ceiling</span></div>
   </section>
 
   <section class="rows">
-    <div class="track"><div class="bar" style="width:50%; background:var(--ascii)"></div></div>
+    <div class="scale-ruler mono">
+      <span style="left:0">0%</span><span style="left:25%">12.5%</span><span style="left:50%">25%</span><span style="left:75%">37.5%</span><span style="left:100%">50%</span>
+    </div>
+    <div></div>
+    <div class="scale-caption">share of all 256 byte values — ASCII's 50% is the ceiling</div>
+
+    <div class="track"><div class="bar" style="width:100%; background:var(--ascii)"></div></div>
     <div class="range"><code>00–7F</code><span class="count">128 values · 50%</span></div>
     <div class="desc"><p><code>0xxxxxxx</code>. A complete character on its own: U+0000–U+007F. Also the only range valid at any position.</p></div>
 
-    <div class="track"><div class="bar" style="width:25%; background:var(--cont)"></div></div>
+    <div class="track"><div class="bar" style="width:50%; background:var(--cont)"></div></div>
     <div class="range"><code>80–BF</code><span class="count">64 values · 25%</span></div>
     <div class="desc"><p><code>10xxxxxx</code>. Payload of every multi-byte sequence — must follow a lead byte, meaningless alone. Consumed 1–3 times per sequence.</p></div>
 
-    <div class="track"><div class="bar" style="width:0.78125%; background:var(--overlong)"></div></div>
+    <div class="track"><div class="bar" style="width:1.5625%; background:var(--overlong)"></div></div>
     <div class="range"><code>C0–C1</code><span class="count">2 values · 0.78%</span></div>
     <div class="desc"><p><code>110xxxxx</code> leads that can only start overlong encodings of ASCII codepoints. Never valid.</p></div>
 
-    <div class="track"><div class="bar" style="width:11.71875%; background:var(--lead2)"></div></div>
+    <div class="track"><div class="bar" style="width:23.4375%; background:var(--lead2)"></div></div>
     <div class="range"><code>C2–DF</code><span class="count">30 values · 11.72%</span></div>
     <div class="desc"><p><code>110xxxxx</code>. Starts a 2-byte sequence (one continuation follows): U+0080–U+07FF. Latin-1 supplement, Greek, Cyrillic, Arabic, Hebrew…</p></div>
 
-    <div class="track"><div class="bar" style="width:6.25%; background:var(--lead3)"></div></div>
+    <div class="track"><div class="bar" style="width:12.5%; background:var(--lead3)"></div></div>
     <div class="range"><code>E0–EF</code><span class="count">16 values · 6.25%</span></div>
     <div class="desc"><p><code>1110xxxx</code>. Starts a 3-byte sequence (two continuations): U+0800–U+FFFF. Most of the BMP.</p>
       <p class="note">Edge constraints live in the second byte: E0 needs ≥ A0 (anti-overlong); ED needs ≤ 9F (blocks surrogates U+D800–U+DFFF).</p></div>
 
-    <div class="track"><div class="bar" style="width:1.953125%; background:var(--lead4)"></div></div>
+    <div class="track"><div class="bar" style="width:3.90625%; background:var(--lead4)"></div></div>
     <div class="range"><code>F0–F4</code><span class="count">5 values · 1.95%</span></div>
     <div class="desc"><p><code>11110xxx</code>. Starts a 4-byte sequence (three continuations): U+10000–U+10FFFF. Everything outside the BMP — emoji included.</p>
       <p class="note">F0 needs second byte ≥ 90 (anti-overlong); F4 needs ≤ 8F (nothing above U+10FFFF).</p></div>
 
-    <div class="track"><div class="bar" style="width:1.171875%; background:var(--legacy4)"></div></div>
+    <div class="track"><div class="bar" style="width:2.34375%; background:var(--legacy4)"></div></div>
     <div class="range"><code>F5–F7</code><span class="count">3 values · 1.17%</span></div>
     <div class="desc"><p>Same <code>11110xxx</code> shape as F0–F4, but the payload lands past Unicode's limit: U+140000–U+1FFFFF. Well-formed in the original spec; rejected by modern UTF-8.</p></div>
 
-    <div class="track"><div class="bar" style="width:1.5625%; background:var(--legacy5)"></div></div>
+    <div class="track"><div class="bar" style="width:3.125%; background:var(--legacy5)"></div></div>
     <div class="range"><code>F8–FB</code><span class="count">4 values · 1.56%</span></div>
     <div class="desc"><p><code>111110xx</code>. 5-byte leads: U+200000–U+3FFFFFF. Original spec only — modern UTF-8 stops at 4 bytes.</p></div>
 
-    <div class="track"><div class="bar" style="width:0.78125%; background:var(--legacy6)"></div></div>
+    <div class="track"><div class="bar" style="width:1.5625%; background:var(--legacy6)"></div></div>
     <div class="range"><code>FC–FD</code><span class="count">2 values · 0.78%</span></div>
     <div class="desc"><p><code>1111110x</code>. 6-byte leads: U+40000000–U+7FFFFFFF — the top of the original design, which serialized all of UCS-4 (2<sup>31</sup> codepoints).</p></div>
 
-    <div class="track"><div class="bar" style="width:0.78125%; background:var(--invalid)"></div></div>
+    <div class="track"><div class="bar" style="width:1.5625%; background:var(--invalid)"></div></div>
     <div class="range"><code>FE–FF</code><span class="count">2 values · 0.78%</span></div>
     <div class="desc"><p><code>1111111x</code> — the lead-bit scheme runs out: no 0 remains to separate the marker from the payload. Never valid in any version.</p></div>
   </section>
 
   <footer>
-    <p>Two specs are layered here. Modern UTF-8 (RFC 3629, 2003): sequences up to 4 bytes, lead bytes up to F4, no overlongs, no surrogates — because Unicode stops at U+10FFFF. The original design (Thompson &amp; Pike, 1992; RFC 2279, 1998) serialized all of UCS-4: 5- and 6-byte sequences, leads up to 0xFD, codepoints up to U+7FFFFFFF. The boxes past F4 follow that original scheme — which is also what the utf8(7) man page describes. For contrast, lenient decoders accept even more: Neovim's built-in <code>vim.str_utf_pos</code> consumes C0- and F5-led sequences as complete. Widths are exact fractions of 256 (e.g. C2–DF = 30/256 = 11.71875%). To edit: each box's width and color are inline on its <code>&lt;div&gt;</code>; nothing is computed.</p>
+    <p>Two specs are layered here. Modern UTF-8 (RFC 3629, 2003): sequences up to 4 bytes, lead bytes up to F4, no overlongs, no surrogates — because Unicode stops at U+10FFFF. The original design (Thompson &amp; Pike, 1992; RFC 2279, 1998) serialized all of UCS-4: 5- and 6-byte sequences, leads up to 0xFD, codepoints up to U+7FFFFFFF. The boxes past F4 follow that original scheme — which is also what the utf8(7) man page describes. For contrast, lenient decoders accept even more: Neovim's built-in <code>vim.str_utf_pos</code> consumes C0- and F5-led sequences as complete. Scales: each strip line spans its own 128 values; row tracks span 0–50% of the space, so ASCII fills a whole track. Widths are exact fractions (e.g. C2–DF = 30/128 = 23.4375% of a track). To edit: each box's width and color are inline on its <code>&lt;div&gt;</code>; nothing is computed.</p>
   </footer>
 </main>
 </body>
