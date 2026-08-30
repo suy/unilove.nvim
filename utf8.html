@@ -40,8 +40,8 @@
 
   /* Byte-space map in two lines: ASCII above, the rest below.
      Each line is stretched to the full width; per-line rulers underneath. */
-  .strip { display: flex; height: 40px; border-radius: 4px; overflow: hidden; }
-  .strip2 { margin-top: 34px; }
+  .strip { display: flex; height: var(--strip-h, 40px); border-radius: 4px; overflow: hidden; }
+  .strip2 { margin-top: var(--strip-gap, 34px); }
   .strip > div { position: relative; }
   .strip .lbl {
     position: absolute; inset: 0;
@@ -49,21 +49,30 @@
     color: #fff; font-size: 11px; letter-spacing: .02em;
     white-space: nowrap; overflow: hidden;
   }
-  .ruler { position: relative; height: 20px; margin-top: 3px; color: var(--muted); font-size: 11px; }
+  .ruler { position: relative; height: var(--ruler-h, 20px); margin-top: var(--ruler-mt, 3px); color: var(--muted); font-size: 11px; }
   .ruler span { position: absolute; top: 0; transform: translateX(-50%); }
   .ruler span:first-child { transform: none; }
   .ruler span:last-child { transform: translateX(-100%); }
 
   /* Unicode's ceiling: dashed marker at the F4/F5 boundary of line 2.
      F5 starts 117/128 into the non-ASCII half → left: 91.40625%. */
-  .map { position: relative; }
+  .map {
+    position: relative;
+    --strip-h: 40px;
+    --ruler-h: 20px;
+    --strip-gap: 34px;
+    --ruler-mt: 3px;
+  }
   .limit {
-    position: absolute; top: 63px; height: 77px; left: 91.40625%;
+    position: absolute;
+    top: calc(var(--strip-h) + var(--ruler-mt) + var(--ruler-h));
+    height: calc(var(--strip-gap) + var(--strip-h) + var(--ruler-mt));
+    left: calc(117 / 128 * 100%);
     border-left: 2px dashed var(--muted);
     pointer-events: none;
   }
   .limit span {
-    position: absolute; top: 3px; right: 0;
+    position: absolute; top: 3px; right: 5px;
     font-size: 11px; color: var(--muted); white-space: nowrap;
   }
 
@@ -119,7 +128,7 @@
 
     <div class="strip strip2">
       <div style="width:50%;      background:var(--cont)"     title="0x80–0xBF · 64 values · continuation byte"><span class="lbl">80–BF continuation</span></div>
-      <div style="width:1.5625%; background:var(--overlong)" title="0xC0–0xC1 · 2 values · never valid (overlong-only leads)"></div>
+      <div style="width:1.5625%;  background:var(--overlong)" title="0xC0–0xC1 · 2 values · never valid (overlong-only leads)"></div>
       <div style="width:23.4375%; background:var(--lead2)"    title="0xC2–0xDF · 30 values · 2-byte lead"><span class="lbl">C2–DF</span></div>
       <div style="width:12.5%;    background:var(--lead3)"    title="0xE0–0xEF · 16 values · 3-byte lead"><span class="lbl">E0–EF</span></div>
       <div style="width:3.90625%; background:var(--lead4)"    title="0xF0–0xF4 · 5 values · 4-byte lead"><span class="lbl">F0–F4</span></div>
