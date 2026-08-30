@@ -72,6 +72,12 @@
   .cp-sub { margin: 0 0 .8rem; color: var(--muted); font-size: .9em; max-width: 80ch; }
   .cp-note { margin: .7rem 0 0; color: var(--muted); font-size: .88em; max-width: 80ch; }
 
+  /* Second-byte constraint figure: shared 80–BF axis, one row per edge lead. */
+  .mini { display: grid; grid-template-columns: auto minmax(220px, 420px) auto; gap: 7px 14px; align-items: center; }
+  .mini .lead { text-align: right; font-size: .9em; }
+  .mini-strip { display: flex; height: 12px; border-radius: 2px; overflow: hidden; }
+  .mini .why { color: var(--muted); font-size: .8em; white-space: nowrap; }
+
   /* Annotated rows: proportional bar | range | explanation.
      Track scale: 0–50% of the byte space — ASCII (128 values) fills a track. */
   .rows {
@@ -155,12 +161,12 @@
     <div class="track"><div class="bar" style="width:12.5%; background:var(--lead3)"></div></div>
     <div class="range"><code>E0–EF</code><span class="bits mono">1110xxxx</span><span class="count">16 values · 6.25%</span></div>
     <div class="desc"><p>Starts a 3-byte sequence (two continuations): U+0800–U+FFFF. Rest of the BMP.</p>
-      <p class="note">Edge constraints live in the second byte: E0 needs ≥ A0 (anti-overlong); ED needs ≤ 9F (blocks surrogates U+D800–U+DFFF).</p></div>
+      <p class="note">E0 and ED constrain the second byte — see the figure below.</p></div>
 
     <div class="track"><div class="bar" style="width:3.90625%; background:var(--lead4)"></div></div>
     <div class="range"><code>F0–F4</code><span class="bits mono">11110xxx</span><span class="count">5 values · 1.95%</span></div>
     <div class="desc"><p>Starts a 4-byte sequence (three continuations): U+10000–U+10FFFF. Everything outside the BMP — emoji included.</p>
-      <p class="note">F0 needs second byte ≥ 90 (anti-overlong); F4 needs ≤ 8F (nothing above U+10FFFF).</p></div>
+      <p class="note">F0 and F4 do too — same figure.</p></div>
 
     <div class="track"><div class="bar" style="width:2.34375%; background:var(--legacy4)"></div></div>
     <div class="range"><code>F5–F7</code><span class="bits mono">11110xxx</span><span class="count">3 values · 1.17%</span></div>
@@ -177,6 +183,50 @@
     <div class="track"><div class="bar" style="width:1.5625%; background:var(--invalid)"></div></div>
     <div class="range"><code>FE–FF</code><span class="bits mono">1111111x</span><span class="count">2 values · 0.78%</span></div>
     <div class="desc"><p>The lead-bit scheme runs out: no 0 remains to separate the marker from the payload. Never valid in any version.</p></div>
+  </section>
+
+  <section class="cps">
+    <h2>The second byte, at the edges</h2>
+    <p class="cp-sub">Only four leads constrain the byte that follows them, always for the same reason: keeping the sequence inside its codepoint band. Every other lead accepts all 64 continuations, and later bytes are never constrained.</p>
+    <div class="mini">
+      <span class="lead mono">any</span>
+      <div class="mini-strip"><div style="width:100%; background:var(--cont)" title="Unconstrained leads: C2–DF, E1–EC, EE–EF, F1–F3 — second byte may be any continuation"></div></div>
+      <span class="why">all 64 continuations valid</span>
+
+      <span class="lead mono">E0</span>
+      <div class="mini-strip">
+        <div style="width:50%; background:var(--overlong)" title="E0 80–9F … would encode U+0000–U+07FF — overlong: shorter forms exist"></div>
+        <div style="width:50%; background:var(--cont)" title="E0 A0–BF · sequences start at U+0800"></div>
+      </div>
+      <span class="why">80–9F forbidden: overlong</span>
+
+      <span class="lead mono">ED</span>
+      <div class="mini-strip">
+        <div style="width:50%; background:var(--cont)" title="ED 80–9F · reaches up to U+D7FF"></div>
+        <div style="width:50%; background:var(--paper); border-left:1px solid var(--track); border-right:1px solid var(--track)" title="ED A0–BF … would encode U+D800–U+DFFF — surrogates, not characters"></div>
+      </div>
+      <span class="why">A0–BF forbidden: surrogates</span>
+
+      <span class="lead mono">F0</span>
+      <div class="mini-strip">
+        <div style="width:25%; background:var(--overlong)" title="F0 80–8F … would encode U+0000–U+FFFF — overlong: shorter forms exist"></div>
+        <div style="width:75%; background:var(--cont)" title="F0 90–BF · sequences start at U+10000"></div>
+      </div>
+      <span class="why">80–8F forbidden: overlong</span>
+
+      <span class="lead mono">F4</span>
+      <div class="mini-strip">
+        <div style="width:25%; background:var(--cont)" title="F4 80–8F · reaches up to U+10FFFF"></div>
+        <div style="width:75%; background:var(--legacy4)" title="F4 90–BF … would encode U+110000 and beyond — past Unicode's ceiling"></div>
+      </div>
+      <span class="why">90–BF forbidden: past U+10FFFF</span>
+
+      <div></div>
+      <div class="ruler mono">
+        <span style="left:0">80</span><span style="left:25%">90</span><span style="left:50%">A0</span><span style="left:75%">B0</span><span style="left:100%">BF</span>
+      </div>
+      <div></div>
+    </div>
   </section>
 
   <section class="cps">
