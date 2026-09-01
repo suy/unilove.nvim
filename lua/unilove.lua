@@ -48,9 +48,15 @@ local function sequence_length(text, start)
     local length = 1
     while length < expected do
         local following = text:byte(start + length)
+        -- Early EOL. Return as many bytes as were counted.
         if following == nil then
             return length
         end
+        -- If not a continuation byte, then the start of the `text`, even if it
+        -- might have a proper leading byte and a proper continuation byte (or
+        -- bytes) after it, it doesn't have all the expeced continuation bytes.
+        -- That means it's gonna be treated as if the leading byte is actually
+        -- alone, because it's corrupt.
         if following < 0x80 or following > 0xBF then
             return 1
         end
@@ -92,6 +98,10 @@ function M.grapheme_at(line, column)
         return '\n'
     end
 
+    -- this is inefficient, as it goes through all the line, when we really
+    -- don't need to go that far. A way to early return, or a way to iterate
+    -- through the line step by step, only as needed, would be nice. This would
+    -- perhaps be make the API quite complicated, though. But it would be cool.
     local codepoint_starts = M.codepoint_positions(line)
     for _, start in ipairs(codepoint_starts) do
         if start > column then
