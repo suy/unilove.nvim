@@ -2,6 +2,13 @@ local M = {}
 
 local config = require('unilove.config')
 
+-- Values of the *start* of some important UTF-8 ranges. First goes ASCII, then
+-- continuation bytes, then the leading bytes for 2, 3 and 4-byte sequences.
+local CONTINUATION = 0x80
+local LEADING2 = 0xC0
+local LEADING3 = 0xE0
+local LEADING4 = 0xF0
+
 local function codepoint_to_character(codepoint)
     return vim.fn.nr2char(codepoint, true)
 end
@@ -9,32 +16,30 @@ end
 function M.first_grapheme(text)
     assert(type(text) == 'string')
     -- vim.fn.matchstr treats NUL bytes as string terminators, so it fails when
-    -- a NUL appears after the first character. Truncate at the NUL byte, then
-    -- match on the prefix. The text is already the start of where the cursor
-    -- is, so we don't need to look past a NUL for the first grapheme.
-    local null_pos = text:find('\0')
-    if null_pos then
-        if null_pos == 1 then
+    -- a NUL appears after the first character. Fix it by discarding anything
+    -- after the NUL byte. The text is already the start of where the cursor is,
+    -- so we don't need to look past a NUL for the first grapheme.
+    local null = text:find('\0')
+    if null then
+        if null == 1 then
             return '\0'
         end
-        text = text:sub(1, null_pos - 1)
+        text = text:sub(1, null - 1)
     end
     return vim.fn.matchstr(text, '.')
 end
 
--- NB: This is only called on the first byte of a sequence, so continuation
--- bytes (0x80-0xBF) are never passed! That's why the first threshold is 0xC0
--- instead of 0x80, as a quick `man utf8` read would suggest.
-local function codepoint_length(byte)
-    if     byte < 0xC0 then return 1
-    -- Continuation bytes could be tested here, to be more explicit. Either
-    -- returning 1 (yes, again, to be explicit) or asserting/erroring to clarify
-    -- that we don't use it in the "unexpected" way (illegal UTF-8).
-    -- Or... perhaps this could be rolled into the only function that uses it:
-    -- sequence_length. Becase then we could integrate them better. Or, this
-    -- could indicate the error case by returning nil.
-    elseif byte < 0xE0 then return 2
-    elseif byte < 0xF0 then return 3
+-- Calculates the expected codepoint length in bytes when given the first byte
+-- of the codepoint. Note that this treats every byte value below the first
+-- leading byte value (LEADING2) as 1. However, in other circumstances, a check
+-- like this would only admit the ASCII range as size 1, and *reject* the
+-- continuation bytes, as those are invalid as first byte. We support them, as
+-- we try to be "correct" (not useless) with invalid UTF-8. We don't special
+-- case invalid leading bytes like 0xC0 and 0xC1 either.
+local function expected_length(byte)
+    if     byte < LEADING2 then return 1
+    elseif byte < LEADING3 then return 2
+    elseif byte < LEADING4 then return 3
     else return 4
     end
 end
@@ -44,28 +49,25 @@ end
 -- sequences interrupted by a non-continuation byte leave the lead byte
 -- standalone (byte-wise), while sequences truncated only by the end of the
 -- string consume their partial run of continuation bytes.
--- TODO: this function definitely should end up being public (or at least,
--- visible from outside the module, and adding an underscore to indicate it's
--- "private") and be tested.
-local function sequence_length(text, start)
+function M.sequence_length(text, start)
     local byte = text:byte(start)
-    if byte < 0x80 then
+    if byte < CONTINUATION then -- ASCII.
         return 1
     end
-    local expected = codepoint_length(byte)
+    local expected = expected_length(byte)
     local length = 1
     while length < expected do
-        local following = text:byte(start + length)
+        local continuation = text:byte(start + length)
         -- Early EOL. Return as many bytes as were counted.
-        if following == nil then
+        if continuation == nil then
             return length
         end
-        -- If not a continuation byte, then the start of the `text`, even if it
-        -- might have a proper leading byte and a proper continuation byte (or
-        -- bytes) after it, it doesn't have all the expeced continuation bytes.
-        -- That means it's gonna be treated as if the leading byte is actually
-        -- alone, because it's corrupt.
-        if following < 0x80 or following > 0xBF then
+        -- If not a continuation byte, then return the start of `text`, even if
+        -- it might have a proper leading byte and a proper continuation byte
+        -- (or bytes) after it, as it doesn't have all the expeced continuation
+        -- bytes. That means it's gonna be treated as if the leading byte is
+        -- actually alone, because it's corrupt.
+        if continuation < CONTINUATION or continuation >= LEADING2 then
             return 1
         end
         length = length + 1
@@ -73,42 +75,40 @@ local function sequence_length(text, start)
     return expected
 end
 
--- Like `vim.str_utf_pos`, but safe for strings containing null bytes, and
--- matching its handling of invalid sequences.
-function M.codepoint_positions(text)
-    local positions = {}
-    local i = 1
-    while i <= #text do
-        table.insert(positions, i)
-        i = i + sequence_length(text, i)
-    end
-    return positions
-end
+-- function M.codepoint_positions(text)
+--     local positions = {}
+--     local i = 1
+--     while i <= #text do
+--         table.insert(positions, i)
+--         i = i + M.sequence_length(text, i)
+--     end
+--     return positions
+-- end
 
--- Remember that this are not the codepoionts, but the POSITIONS of the CP, in
--- bytes, across the string. And this is of course the *start* of the CP.
--- This is right now just the above function, but as an iterator. We need to
--- convert it to produce the same results, but without reusing the above
--- function, of course. The idea is to be a bit more efficient, even if it is a
--- bit of overengineering.
-function M.codepoint_iterator(text)
-    local positions = M.codepoint_positions(text)
-    local current = 0
+-- Returns an iterator over the codepoint positions in `text`. Unlike
+-- `vim.str_utf_pos`, it's safe for strings containing null bytes.
+function M.codepoint_positions(text)
+    local position = 1
     return function()
-        current = current + 1
-        return positions[current]
+        if position > #text then
+            return nil
+        end
+        local start = position
+        position = position + M.sequence_length(text, position)
+        return start
     end
 end
 
 function M.codepoints(text)
     local result = {}
-    for _, start in ipairs(M.codepoint_positions(text)) do
+    for start in M.codepoint_positions(text) do
         local byte = text:byte(start)
-        if byte < 0x80 then
+        if byte < CONTINUATION then
             table.insert(result, byte)
         else
-            local length = sequence_length(text, start)
-            table.insert(result, vim.fn.char2nr(text:sub(start, start + length - 1), true))
+            local length = M.sequence_length(text, start)
+            local sequence = text:sub(start, start + length - 1)
+            table.insert(result, vim.fn.char2nr(sequence))
         end
     end
     return result
@@ -121,12 +121,7 @@ function M.grapheme_at(line, column)
         return '\n'
     end
 
-    -- this is inefficient, as it goes through all the line, when we really
-    -- don't need to go that far. A way to early return, or a way to iterate
-    -- through the line step by step, only as needed, would be nice. This would
-    -- perhaps be make the API quite complicated, though. But it would be cool.
-    local codepoint_starts = M.codepoint_positions(line)
-    for _, start in ipairs(codepoint_starts) do
+    for start in M.codepoint_positions(line) do
         if start > column then
             break
         end
@@ -148,7 +143,7 @@ end
 
 local function prettify(codepoint)
     if codepoint == 0 then
-        return 'NUL' -- ?? So short??
+        return 'NUL'
     end
     return vim.fn.strtrans(codepoint_to_character(codepoint))
 end

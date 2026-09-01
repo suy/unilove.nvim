@@ -92,7 +92,51 @@ end
 
 --------------------------------------------------------------------------------
 
-T['codepoint_iterator()'] = new_set({
+-- The most basic building block of the codepoint walking: how many bytes the
+-- sequence starting at `start` occupies. Valid input, plus the invalid cases
+-- which follow `vim.str_utf_pos` (the same rules tested through the other
+-- functions below).
+T['sequence_length()'] = new_set({
+    parametrize = {
+        -- ASCII.
+        {'Hello', 1, 1},
+        {'Hello', 5, 1},
+
+        -- Two byte codepoints, and what follows them.
+        {'aliño', 4, 2},
+        {'aliño', 6, 1},
+
+        -- Three and four byte codepoints.
+        {'ἀ', 1, 3},
+        {thumbs_up, 1, 4},
+
+        -- A lead byte interrupted by a non-continuation byte stands alone.
+        {string.char(0xC3) .. 'A', 1, 1},
+        {string.char(0xE2, 0x82, 0x41), 1, 1},
+
+        -- A stranded continuation byte is a sequence of one byte.
+        {string.char(0xE2, 0x82, 0x41), 2, 1},
+        {string.char(0xC3, 0x80, 0x80) .. 'a', 3, 1},
+
+        -- Complete sequences, even overlong or out of range.
+        {string.char(0xC0, 0x80), 1, 2},
+        {string.char(0xC3, 0x80, 0x80) .. 'a', 1, 2},
+        {string.char(0xF5, 0x80, 0x80, 0x80), 1, 4},
+
+        -- A sequence truncated only by the end of the string consumes its
+        -- partial run of continuation bytes.
+        {string.char(0xE2, 0x82), 1, 2},
+        {string.char(0xF0, 0x80), 1, 2},
+    },
+})
+
+T['sequence_length()']['returns the byte length of the sequence starting at a position'] = function(text, start, expected)
+    eq(unilove.sequence_length(text, start), expected)
+end
+
+--------------------------------------------------------------------------------
+
+T['codepoint_positions()'] = new_set({
     parametrize = {
         -- ASCII.
         {'Hello', {1, 2, 3, 4, 5}},
@@ -101,27 +145,49 @@ T['codepoint_iterator()'] = new_set({
         -- Some use of single byte and two byte codepoints.
         {'aliño', {1, 2, 3, 4, 6}},
         {'feliç', {1, 2, 3, 4, 5}},
-        -- TODO: examples with composing and pre-composed vowels with accents.
+
+        -- Pre-composed (NFC) vowels with accents.
+        {'ábé', {1, 3, 4}},
+        -- Decomposed (NFD): a plain vowel plus a combining mark.
+        {accented_a, {1, 2}},
+        {a_acute_grave, {1, 2, 4}},
 
         -- All multi byte.
         {'ɑάαᶐἀ', {1, 3, 5, 7, 10}},
-        -- TODO: more examples.
+        {'a' .. thumbs_up .. 'b', {1, 2, 6}},
+
+        -- Empty text yields nothing.
+        {'', {}},
+
+        -- Null bytes are just one more one byte codepoint.
+        {'a\0b', {1, 2, 3}},
+
+        -- Invalid input, same rules as `codepoint_positions()` below: a lead
+        -- byte interrupted by a non-continuation byte stands alone, and a
+        -- sequence truncated by the end of the string consumes its partial run.
+        {string.char(0xE2, 0x82, 0x41), {1, 2, 3}},
+        {string.char(0xE2, 0x82), {1}},
+        {string.char(0xF0, 0x80), {1}},
+        {string.char(0xC0, 0x80) .. 'a', {1, 3}},
     },
 })
 
-T['codepoint_iterator()']['returns the start of each codepoint'] = function(given, expected)
+T['codepoint_positions()']['returns the start of each codepoint'] = function(given, expected)
     local result = {}
     -- Keep it for testing.
     -- for codepoint in ipairs(unilove.codepoint_positions(given)) do
     --     table.insert(result, codepoint)
     -- end
-    for codepoint in unilove.codepoint_iterator(given) do
+    for codepoint in unilove.codepoint_positions(given) do
         table.insert(result, codepoint)
     end
     eq(result, expected)
 end
 
 --------------------------------------------------------------------------------
+
+--[[
+--
 
 T['codepoint_positions()'] = new_set()
 
@@ -156,6 +222,9 @@ T['codepoint_positions()']['consumes sequences truncated only by the end of the 
     eq(unilove.codepoint_positions(string.char(0xE2, 0x82)), { 1 })
     eq(unilove.codepoint_positions(string.char(0xF0, 0x80)), { 1 })
 end
+
+--]]
+
 
 T['codepoints()'] = new_set()
 
