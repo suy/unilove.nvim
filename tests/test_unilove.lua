@@ -35,7 +35,8 @@ local T = new_set({
 
 -- `first_grapheme` is basically `vim.fn.matchstr` in disguise, so strictly
 -- speaking, there is no need to test it very thoroughly. However, we test that
--- it does what we expect it to do in quite a few cases, to prevent surprises.
+-- it does what we expect it to do in quite a few cases to prevent surprises, or
+-- in case that we need to replace the implementation for some reason.
 T['first_grapheme()'] = new_set()
 
 T['first_grapheme()']['requires a string'] = function()
@@ -87,6 +88,37 @@ end
 T['first_grapheme()']['keeps emoji modifiers and ZWJ sequences together'] = function()
     eq(unilove.first_grapheme(thumbs_up_light_skin .. 'x'), thumbs_up_light_skin)
     eq(unilove.first_grapheme(woman_and_girl .. 'x'), woman_and_girl)
+end
+
+--------------------------------------------------------------------------------
+
+T['codepoint_iterator()'] = new_set({
+    parametrize = {
+        -- ASCII.
+        {'Hello', {1, 2, 3, 4, 5}},
+        {'a/b.c', {1, 2, 3, 4, 5}},
+
+        -- Some use of single byte and two byte codepoints.
+        {'aliño', {1, 2, 3, 4, 6}},
+        {'feliç', {1, 2, 3, 4, 5}},
+        -- TODO: examples with composing and pre-composed vowels with accents.
+
+        -- All multi byte.
+        {'ɑάαᶐἀ', {1, 3, 5, 7, 10}},
+        -- TODO: more examples.
+    },
+})
+
+T['codepoint_iterator()']['returns the start of each codepoint'] = function(given, expected)
+    local result = {}
+    -- Keep it for testing.
+    -- for codepoint in ipairs(unilove.codepoint_positions(given)) do
+    --     table.insert(result, codepoint)
+    -- end
+    for codepoint in unilove.codepoint_iterator(given) do
+        table.insert(result, codepoint)
+    end
+    eq(result, expected)
 end
 
 --------------------------------------------------------------------------------

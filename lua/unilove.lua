@@ -27,7 +27,12 @@ end
 -- instead of 0x80, as a quick `man utf8` read would suggest.
 local function codepoint_length(byte)
     if     byte < 0xC0 then return 1
-        -- continuation bytes
+    -- Continuation bytes could be tested here, to be more explicit. Either
+    -- returning 1 (yes, again, to be explicit) or asserting/erroring to clarify
+    -- that we don't use it in the "unexpected" way (illegal UTF-8).
+    -- Or... perhaps this could be rolled into the only function that uses it:
+    -- sequence_length. Becase then we could integrate them better. Or, this
+    -- could indicate the error case by returning nil.
     elseif byte < 0xE0 then return 2
     elseif byte < 0xF0 then return 3
     else return 4
@@ -39,6 +44,9 @@ end
 -- sequences interrupted by a non-continuation byte leave the lead byte
 -- standalone (byte-wise), while sequences truncated only by the end of the
 -- string consume their partial run of continuation bytes.
+-- TODO: this function definitely should end up being public (or at least,
+-- visible from outside the module, and adding an underscore to indicate it's
+-- "private") and be tested.
 local function sequence_length(text, start)
     local byte = text:byte(start)
     if byte < 0x80 then
@@ -75,6 +83,21 @@ function M.codepoint_positions(text)
         i = i + sequence_length(text, i)
     end
     return positions
+end
+
+-- Remember that this are not the codepoionts, but the POSITIONS of the CP, in
+-- bytes, across the string. And this is of course the *start* of the CP.
+-- This is right now just the above function, but as an iterator. We need to
+-- convert it to produce the same results, but without reusing the above
+-- function, of course. The idea is to be a bit more efficient, even if it is a
+-- bit of overengineering.
+function M.codepoint_iterator(text)
+    local positions = M.codepoint_positions(text)
+    local current = 0
+    return function()
+        current = current + 1
+        return positions[current]
+    end
 end
 
 function M.codepoints(text)
