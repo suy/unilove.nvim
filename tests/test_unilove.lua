@@ -7,20 +7,22 @@ local config = require('unilove.config')
 
 local fixture_path = vim.fs.joinpath('tests', 'fixtures', 'UnicodeData.txt')
 
-local null = '\0'
-local newline = '\n'
 local combining_acute = '\u{0301}'
 local combining_grave = '\u{0300}'
-local accented_a = 'a' .. combining_acute
-local grave_a = 'a' .. combining_grave
-local a_acute_grave = accented_a .. combining_grave
+local fitzpatrick_one = '\u{1F3FB}'
+
+local a_acute = 'a' .. combining_acute
+local a_grave = 'a' .. combining_grave
+local a_acute_grave = 'a' .. combining_acute .. combining_grave
+
 local thumbs_up = '\u{1F44D}'
-local light_skin_tone = '\u{1F3FB}'
-local thumbs_up_light_skin = thumbs_up .. light_skin_tone
+local thumbs_up_light_skin = thumbs_up .. fitzpatrick_one
+
 local woman = '\u{1F469}'
 local girl = '\u{1F467}'
 local zero_width_joiner = '\u{200D}'
 local woman_and_girl = woman .. zero_width_joiner .. girl
+
 local regional_indicator_e = '\u{1F1EA}'
 local regional_indicator_u = '\u{1F1FA}'
 local eu_flag = regional_indicator_e .. regional_indicator_u
@@ -32,63 +34,6 @@ local T = new_set({
         end,
     },
 })
-
--- `first_grapheme` is basically `vim.fn.matchstr` in disguise, so strictly
--- speaking, there is no need to test it very thoroughly. However, we test that
--- it does what we expect it to do in quite a few cases to prevent surprises, or
--- in case that we need to replace the implementation for some reason.
-T['first_grapheme()'] = new_set()
-
-T['first_grapheme()']['requires a string'] = function()
-    expect.error(function()
-        unilove.first_grapheme(1)
-    end, 'assertion failed')
-end
-
-T['first_grapheme()']['returns an empty string for empty text'] = function()
-    eq(unilove.first_grapheme(''), '')
-end
-
-T['first_grapheme()']['is able to accept null bytes'] = function()
-    eq(unilove.first_grapheme('\0'), '\0')
-    eq(unilove.first_grapheme('\0ab'), '\0')
-    eq(unilove.first_grapheme('a\0b'), 'a')
-    eq(unilove.first_grapheme('ab\0'), 'a')
-end
-
-T['first_grapheme()']['works on an ASCII-only string'] = function()
-    eq(unilove.first_grapheme('abc'), 'a')
-    eq(unilove.first_grapheme('@bc'), '@')
-    eq(unilove.first_grapheme('^bc'), '^')
-    eq(unilove.first_grapheme('.bc'), '.')
-    eq(unilove.first_grapheme(';bc'), ';')
-end
-
-T['first_grapheme()']['works on "simple" graphemes above the ASCII range'] = function()
-    -- Europe.
-    eq(unilove.first_grapheme('ábé'), 'á')
-    eq(unilove.first_grapheme('åbé'), 'å')
-    eq(unilove.first_grapheme('Æøß'), 'Æ')
-    eq(unilove.first_grapheme('Çbé'), 'Ç')
-    -- IPA.
-    eq(unilove.first_grapheme('əɮ'), 'ə')
-    eq(unilove.first_grapheme('ɮə'), 'ɮ')
-    -- Asia.
-    eq(unilove.first_grapheme('ヵbé'), 'ヵ')
-    eq(unilove.first_grapheme('ヌbé'), 'ヌ')
-    eq(unilove.first_grapheme('ㄅㄗß'), 'ㄅ')
-end
-
-T['first_grapheme()']['keeps combining marks with their base character'] = function()
-    eq(unilove.first_grapheme(accented_a .. 'b'), accented_a)
-    eq(unilove.first_grapheme(grave_a .. 'b'), grave_a)
-    eq(unilove.first_grapheme(a_acute_grave .. 'b'), a_acute_grave)
-end
-
-T['first_grapheme()']['keeps emoji modifiers and ZWJ sequences together'] = function()
-    eq(unilove.first_grapheme(thumbs_up_light_skin .. 'x'), thumbs_up_light_skin)
-    eq(unilove.first_grapheme(woman_and_girl .. 'x'), woman_and_girl)
-end
 
 --------------------------------------------------------------------------------
 
@@ -138,6 +83,9 @@ end
 
 T['codepoint_positions()'] = new_set({
     parametrize = {
+        -- Empty text yields nothing.
+        {'', {}},
+
         -- ASCII.
         {'Hello', {1, 2, 3, 4, 5}},
         {'a/b.c', {1, 2, 3, 4, 5}},
@@ -147,84 +95,74 @@ T['codepoint_positions()'] = new_set({
         {'feliç', {1, 2, 3, 4, 5}},
 
         -- Pre-composed (NFC) vowels with accents.
-        {'ábé', {1, 3, 4}},
+        {'àbédö', {1, 3, 4, 6, 7}},
         -- Decomposed (NFD): a plain vowel plus a combining mark.
-        {accented_a, {1, 2}},
+        {a_acute, {1, 2}},
         {a_acute_grave, {1, 2, 4}},
 
         -- All multi byte.
         {'ɑάαᶐἀ', {1, 3, 5, 7, 10}},
-        {'a' .. thumbs_up .. 'b', {1, 2, 6}},
+        -- TODO: add one example with 3 to 5 hiragana characters (better if it's funny or interesting in some way).
+        -- TODO: add one example with 3 to 5 katakana characters (better if it's funny or interesting in some way).
+        -- TODO: add a "nihongo" example in kanji
+        -- TODO: add one or two examples in Chinese. If it's possible and makes
+        -- sense, add on in Mandarin and one in Cantonese (I know nothing of
+        -- those languages or culture, but seems a cool idea as a foreigner, but
+        -- I don't know how forced it might read).
 
-        -- Empty text yields nothing.
-        {'', {}},
+        -- TODO: Add more examples with emoji. If possible, use all of the
+        -- "constants" from the top of the file.
+        {'a' .. thumbs_up .. 'b', {1, 2, 6}},
 
         -- Null bytes are just one more one byte codepoint.
         {'a\0b', {1, 2, 3}},
+        {'\0ab', {1, 2, 3}},
+        {'ab\0', {1, 2, 3}},
 
-        -- Invalid input, same rules as `codepoint_positions()` below: a lead
+        -- TODO: I dont' know which cases I want to cover here from here till
+        -- the end. I guess only the error cases? Is there something else? For
+        -- those error cases, I want to see first which ones you come up with. I
+        -- want you to try to showcase more or less all the possible things that
+        -- "can go wrong", and cover them with at least a couple of assertions
+        -- each. Like, a couple of examples for starting with a continuation
+        -- byte, having a lead byte alone, having a code point incomplete as it
+        -- would need more bytes (and that code point might get incomplete by
+        -- the ending of the string or the presence of the leading byte of
+        -- another code point, which might be complete, or also be incomplete!).
+        -- I'm not saying the next lines are wrong, I'm just asking you to fill
+        -- the gaps, if any. Don't go crazy, but try to be through in a balanced
+        -- way. Have fun. :-)
+
+        -- A lead
         -- byte interrupted by a non-continuation byte stands alone, and a
         -- sequence truncated by the end of the string consumes its partial run.
         {string.char(0xE2, 0x82, 0x41), {1, 2, 3}},
         {string.char(0xE2, 0x82), {1}},
         {string.char(0xF0, 0x80), {1}},
         {string.char(0xC0, 0x80) .. 'a', {1, 3}},
+
+        -- A lead byte interrupted immediately by a non-continuation byte.
+        {string.char(0xC3) .. 'A', {1, 2}},
+        {string.char(0xC3) .. 'abc', {1, 2, 3, 4}},
+        {string.char(0xE2, 0x41, 0x42), {1, 2, 3}},
+        {string.char(0xF0, 0x9F, 0x41, 0x42), {1, 2, 3, 4}},
+
+        -- Complete sequences, even out of range, followed by more text; the
+        -- stranded continuation byte after C3 80 is a sequence of its own.
+        {string.char(0xF5, 0x80, 0x80, 0x80) .. 'a', {1, 5}},
+        {string.char(0xC3, 0x80, 0x80) .. 'a', {1, 3, 4}},
     },
 })
 
-T['codepoint_positions()']['returns the start of each codepoint'] = function(given, expected)
+T['codepoint_positions()']['produces the start of each codepoint'] = function(given, expected)
     local result = {}
-    -- Keep it for testing.
-    -- for codepoint in ipairs(unilove.codepoint_positions(given)) do
-    --     table.insert(result, codepoint)
-    -- end
-    for codepoint in unilove.codepoint_positions(given) do
-        table.insert(result, codepoint)
+    for position in unilove.codepoint_positions(given) do
+        table.insert(result, position)
     end
     eq(result, expected)
 end
 
 --------------------------------------------------------------------------------
-
---[[
---
-
-T['codepoint_positions()'] = new_set()
-
-T['codepoint_positions()']['returns the start of each codepoint in valid text'] = function()
-    eq(unilove.codepoint_positions('A' .. thumbs_up .. 'a'), { 1, 2, 6 })
-    eq(unilove.codepoint_positions('abc'), { 1, 2, 3 })
-end
-
-T['codepoint_positions()']['walks embedded null bytes'] = function()
-    eq(unilove.codepoint_positions('a\0b'), { 1, 2, 3 })
-end
-
--- Invalid sequences follow `vim.str_utf_pos`: a lead byte interrupted by a
--- non-continuation byte stands alone, and the walk is byte-wise from there;
--- a sequence truncated only by the end of the string consumes its partial run
--- of continuation bytes. This way no byte of the line is ever skipped.
-T['codepoint_positions()']['leaves an interrupted lead byte standalone'] = function()
-    eq(unilove.codepoint_positions(string.char(0xC3) .. 'A'), { 1, 2 })
-    eq(unilove.codepoint_positions(string.char(0xC3) .. 'abc'), { 1, 2, 3, 4 })
-    eq(unilove.codepoint_positions(string.char(0xE2, 0x41, 0x42)), { 1, 2, 3 })
-    eq(unilove.codepoint_positions(string.char(0xE2, 0x82, 0x41)), { 1, 2, 3 })
-    eq(unilove.codepoint_positions(string.char(0xF0, 0x9F, 0x41, 0x42)), { 1, 2, 3, 4 })
-end
-
-T['codepoint_positions()']['consumes complete sequences, even overlong or out of range'] = function()
-    eq(unilove.codepoint_positions(string.char(0xF5, 0x80, 0x80, 0x80) .. 'a'), { 1, 5 })
-    eq(unilove.codepoint_positions(string.char(0xC0, 0x80) .. 'a'), { 1, 3 })
-    eq(unilove.codepoint_positions(string.char(0xC3, 0x80, 0x80) .. 'a'), { 1, 3, 4 })
-end
-
-T['codepoint_positions()']['consumes sequences truncated only by the end of the string'] = function()
-    eq(unilove.codepoint_positions(string.char(0xE2, 0x82)), { 1 })
-    eq(unilove.codepoint_positions(string.char(0xF0, 0x80)), { 1 })
-end
-
---]]
-
 
 T['codepoints()'] = new_set()
 
@@ -233,8 +171,8 @@ T['codepoints()']['returns the codepoints in a string'] = function()
 end
 
 T['codepoints()']['keeps combining marks and emoji modifiers as separate codepoints'] = function()
-    eq(unilove.codepoints(accented_a), { 0x61, 0x301 })
-    eq(unilove.codepoints(grave_a), { 0x61, 0x300 })
+    eq(unilove.codepoints(a_acute), { 0x61, 0x301 })
+    eq(unilove.codepoints(a_grave), { 0x61, 0x300 })
     eq(unilove.codepoints(thumbs_up_light_skin), { 0x1F44D, 0x1F3FB })
 end
 
@@ -246,12 +184,11 @@ T['codepoints()']['keeps the codepoints in a ZWJ sequence'] = function()
     eq(unilove.codepoints(woman_and_girl), { 0x1F469, 0x200D, 0x1F467 })
 end
 
-T['codepoints()']['handles NUL, which Lua string iteration omits'] = function()
-    eq(unilove.codepoints(null), { 0 })
-end
-
-T['codepoints()']['keeps null bytes inside text'] = function()
+T['codepoints()']['handles the null byte correctly in different positions'] = function()
+    eq(unilove.codepoints('\0'), { 0 })
     eq(unilove.codepoints('a\0b'), { 0x61, 0x00, 0x62 })
+    eq(unilove.codepoints('\0ab'), { 0x00, 0x61, 0x62 })
+    eq(unilove.codepoints('ab\0'), { 0x61, 0x62, 0x00 })
 end
 
 T['codepoints()']['reports an invalid lead byte as its own value, losing no characters'] = function()
@@ -263,6 +200,67 @@ T['codepoints()']['returns an empty array for an empty string'] = function()
     eq(unilove.codepoints(''), {})
 end
 
+--------------------------------------------------------------------------------
+
+-- `first_grapheme` is basically `vim.fn.matchstr` in disguise, so strictly
+-- speaking, there is no need to test it very thoroughly. However, we test that
+-- it does what we expect it to do in quite a few cases to prevent surprises, or
+-- in case that we need to replace the implementation for some reason.
+T['first_grapheme()'] = new_set()
+
+T['first_grapheme()']['requires a string'] = function()
+    expect.error(function()
+        unilove.first_grapheme(1)
+    end, 'assertion failed')
+end
+
+T['first_grapheme()']['returns an empty string for empty text'] = function()
+    eq(unilove.first_grapheme(''), '')
+end
+
+T['first_grapheme()']['is able to accept null bytes'] = function()
+    eq(unilove.first_grapheme('\0'), '\0')
+    eq(unilove.first_grapheme('\0ab'), '\0')
+    eq(unilove.first_grapheme('a\0b'), 'a')
+    eq(unilove.first_grapheme('ab\0'), 'a')
+end
+
+T['first_grapheme()']['works on an ASCII-only string'] = function()
+    eq(unilove.first_grapheme('abc'), 'a')
+    eq(unilove.first_grapheme('@bc'), '@')
+    eq(unilove.first_grapheme('^bc'), '^')
+    eq(unilove.first_grapheme('.bc'), '.')
+    eq(unilove.first_grapheme(';bc'), ';')
+end
+
+T['first_grapheme()']['works on "simple" graphemes above the ASCII range'] = function()
+    -- Europe.
+    eq(unilove.first_grapheme('ábé'), 'á')
+    eq(unilove.first_grapheme('åbé'), 'å')
+    eq(unilove.first_grapheme('Æøß'), 'Æ')
+    eq(unilove.first_grapheme('Çbé'), 'Ç')
+    -- IPA.
+    eq(unilove.first_grapheme('əɮ'), 'ə')
+    eq(unilove.first_grapheme('ɮə'), 'ɮ')
+    -- Asia.
+    eq(unilove.first_grapheme('ヵbé'), 'ヵ')
+    eq(unilove.first_grapheme('ヌbé'), 'ヌ')
+    eq(unilove.first_grapheme('ㄅㄗß'), 'ㄅ')
+end
+
+T['first_grapheme()']['keeps combining marks with their base character'] = function()
+    eq(unilove.first_grapheme(a_acute .. 'b'), a_acute)
+    eq(unilove.first_grapheme(a_grave .. 'b'), a_grave)
+    eq(unilove.first_grapheme(a_acute_grave .. 'b'), a_acute_grave)
+end
+
+T['first_grapheme()']['keeps emoji modifiers and ZWJ sequences together'] = function()
+    eq(unilove.first_grapheme(thumbs_up_light_skin .. 'x'), thumbs_up_light_skin)
+    eq(unilove.first_grapheme(woman_and_girl .. 'x'), woman_and_girl)
+end
+
+--------------------------------------------------------------------------------
+
 T['grapheme_at()'] = new_set()
 
 T['grapheme_at()']['finds ASCII characters using one-based byte columns'] = function()
@@ -272,11 +270,11 @@ T['grapheme_at()']['finds ASCII characters using one-based byte columns'] = func
 end
 
 T['grapheme_at()']['returns the complete grapheme at each byte in a combining sequence'] = function()
-    local text = accented_a .. 'b'
-    for column = 1, #accented_a do
-        eq(unilove.grapheme_at(text, column), accented_a)
+    local text = a_acute .. 'b'
+    for column = 1, #a_acute do
+        eq(unilove.grapheme_at(text, column), a_acute)
     end
-    eq(unilove.grapheme_at(text, #accented_a + 1), 'b')
+    eq(unilove.grapheme_at(text, #a_acute + 1), 'b')
 end
 
 T['grapheme_at()']['keeps multiple combining marks together at every byte'] = function()
@@ -314,6 +312,7 @@ T['grapheme_at()']['keeps regional indicators together as a flag'] = function()
 end
 
 T['grapheme_at()']['uses a newline for empty lines and columns past the line'] = function()
+    local newline = '\n'
     eq(unilove.grapheme_at('', 1), newline)
     eq(unilove.grapheme_at('a', 2), newline)
     eq(unilove.grapheme_at(thumbs_up, #thumbs_up + 1), newline)
@@ -330,6 +329,8 @@ end
 T['grapheme_at()']['returns the null byte inside a line'] = function()
     eq(unilove.grapheme_at('a\0b', 2), '\0')
 end
+
+--------------------------------------------------------------------------------
 
 T['format_one()'] = new_set()
 
@@ -370,7 +371,7 @@ end
 
 T['format()']['formats each codepoint in a grapheme independently'] = function()
     config.setup({ show_name = false })
-    eq(unilove.format(accented_a), 'a\t97\n' .. combining_acute .. '\t769')
+    eq(unilove.format(a_acute), 'a\t97\n' .. combining_acute .. '\t769')
 end
 
 T['format()']['formats each codepoint in a multi-combining grapheme independently'] = function()
