@@ -9,25 +9,7 @@ local LEADING2 = 0xC0
 local LEADING3 = 0xE0
 local LEADING4 = 0xF0
 
-local function codepoint_to_character(codepoint)
-    return vim.fn.nr2char(codepoint, true)
-end
 
-function M.first_grapheme(text)
-    assert(type(text) == 'string')
-    -- vim.fn.matchstr treats NUL bytes as string terminators, so it fails when
-    -- a NUL appears after the first character. Fix it by discarding anything
-    -- after the NUL byte. The text is already the start of where the cursor is,
-    -- so we don't need to look past a NUL for the first grapheme.
-    local null = text:find('\0')
-    if null then
-        if null == 1 then
-            return '\0'
-        end
-        text = text:sub(1, null - 1)
-    end
-    return vim.fn.matchstr(text, '.')
-end
 
 -- Calculates the expected codepoint length in bytes when given the first byte
 -- of the codepoint. Note that this treats every byte value below the first
@@ -58,15 +40,11 @@ function M.sequence_length(text, start)
     local length = 1
     while length < expected do
         local continuation = text:byte(start + length)
-        -- Early EOL. Return as many bytes as were counted.
+        -- End of string: return the partial run counted so far.
         if continuation == nil then
             return length
         end
-        -- If not a continuation byte, then return the start of `text`, even if
-        -- it might have a proper leading byte and a proper continuation byte
-        -- (or bytes) after it, as it doesn't have all the expeced continuation
-        -- bytes. That means it's gonna be treated as if the leading byte is
-        -- actually alone, because it's corrupt.
+        -- Interrupted by a non-continuation byte: the lead byte stands alone.
         if continuation < CONTINUATION or continuation >= LEADING2 then
             return 1
         end
@@ -74,16 +52,6 @@ function M.sequence_length(text, start)
     end
     return expected
 end
-
--- function M.codepoint_positions(text)
---     local positions = {}
---     local i = 1
---     while i <= #text do
---         table.insert(positions, i)
---         i = i + M.sequence_length(text, i)
---     end
---     return positions
--- end
 
 -- Returns an iterator over the codepoint positions in `text`. Unlike
 -- `vim.str_utf_pos`, it's safe for strings containing null bytes.
@@ -114,6 +82,25 @@ function M.codepoints(text)
     return result
 end
 
+
+
+-- Since `vim.fn.matchstr` doesn't accept anything containing NUL (it gets
+-- converted to `Blob` when passed to VimL), we handle them ourselves: a leading
+-- NUL is a complete grapheme by itself (control bytes always break clusters),
+-- and a later NUL can only sit at or after the end of the first grapheme, so
+-- truncating just before it leaves the first grapheme intact for `matchstr`.
+function M.first_grapheme(text)
+    assert(type(text) == 'string')
+    local null = text:find('\0')
+    if null then
+        if null == 1 then
+            return '\0'
+        end
+        text = text:sub(1, null - 1)
+    end
+    return vim.fn.matchstr(text, '.')
+end
+
 function M.grapheme_at(line, column)
     -- Empty lines or lines where the cursor is beyond the line length (e.g.
     -- `virtualedit=onemore`).
@@ -139,6 +126,12 @@ function M.cursor_grapheme()
     local line = vim.api.nvim_get_current_line()
     local column = vim.api.nvim_win_get_cursor(0)[2] + 1
     return M.grapheme_at(line, column)
+end
+
+
+
+local function codepoint_to_character(codepoint)
+    return vim.fn.nr2char(codepoint)
 end
 
 local function prettify(codepoint)
