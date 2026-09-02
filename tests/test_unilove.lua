@@ -38,9 +38,9 @@ local T = new_set({
 --------------------------------------------------------------------------------
 
 -- The most basic building block of the codepoint walking: how many bytes the
--- sequence starting at `start` occupies. Valid input, plus the invalid cases
--- which follow `vim.str_utf_pos` (the same rules tested through the other
--- functions below).
+-- sequence starting at `start` occupies. Valid input, plus a taxonomy of the
+-- invalid input, which mirrors how `vim.str_utf_pos` treats it.
+-- `codepoint_positions()` below walks over these same rules.
 T['sequence_length()'] = new_set({
     parametrize = {
         -- ASCII.
@@ -51,27 +51,51 @@ T['sequence_length()'] = new_set({
         {'aliño', 4, 2},
         {'aliño', 6, 1},
 
-        -- Three and four byte codepoints.
+        -- Three and four byte codepoints, also not starting at the beginning
+        -- of the text.
         {'ἀ', 1, 3},
         {thumbs_up, 1, 4},
+        {'日本語', 4, 3},
 
         -- A lead byte interrupted by a non-continuation byte stands alone.
         {string.char(0xC3) .. 'A', 1, 1},
         {string.char(0xE2, 0x82, 0x41), 1, 1},
+        {string.char(0xF0, 0x9F, 0x41, 0x42), 1, 1},
+        {string.char(0xF0, 0x9F, 0x8C, 0x41), 1, 1},
+        -- Interrupted by the leading byte of another sequence, which may be
+        -- complete or incomplete.
+        {string.char(0xC3, 0xC3, 0xA5), 1, 1},
+        {string.char(0xF0, 0xE2, 0x82, 0xAC), 1, 1},
+        {string.char(0xC3, 0xE2, 0x82), 1, 1},
 
         -- A stranded continuation byte is a sequence of one byte.
+        {string.char(0x80), 1, 1},
         {string.char(0xE2, 0x82, 0x41), 2, 1},
+        {string.char(0xE2, 0x41, 0x80), 3, 1},
         {string.char(0xC3, 0x80, 0x80) .. 'a', 3, 1},
+        -- Same result, different cause: valid text, but the position lands in
+        -- the middle of a codepoint. The function only sees the byte at the
+        -- position; it cannot tell this 0x97 is a proper continuation of 日.
+        {'日本語', 2, 1},
 
-        -- Complete sequences, even overlong or out of range.
+        -- Complete sequences, even when they encode invalid codepoints:
+        -- overlong encodings, UTF-16 surrogate halves, out of range values.
         {string.char(0xC0, 0x80), 1, 2},
-        {string.char(0xC3, 0x80, 0x80) .. 'a', 1, 2},
+        {string.char(0xED, 0xA0, 0x80), 1, 3},
         {string.char(0xF5, 0x80, 0x80, 0x80), 1, 4},
 
+        -- A complete sequence is unaffected by the bytes that follow it, and
+        -- lead bytes beyond the four byte design (0xF8 and above) are measured
+        -- as four byte sequences.
+        {string.char(0xC3, 0x80, 0x80) .. 'a', 1, 2},
+        {string.char(0xF8, 0x88, 0x80, 0x80), 1, 4},
+
         -- A sequence truncated only by the end of the string consumes its
-        -- partial run of continuation bytes.
+        -- partial run of continuation bytes, at every width.
+        {string.char(0xC3), 1, 1},
         {string.char(0xE2, 0x82), 1, 2},
         {string.char(0xF0, 0x80), 1, 2},
+        {string.char(0xF0, 0x9F, 0x8C), 1, 3},
     },
 })
 
@@ -102,16 +126,23 @@ T['codepoint_positions()'] = new_set({
 
         -- All multi byte.
         {'ɑάαᶐἀ', {1, 3, 5, 7, 10}},
-        -- TODO: add one example with 3 to 5 hiragana characters (better if it's funny or interesting in some way).
-        -- TODO: add one example with 3 to 5 katakana characters (better if it's funny or interesting in some way).
-        -- TODO: add a "nihongo" example in kanji
-        -- TODO: add one or two examples in Chinese. If it's possible and makes
-        -- sense, add on in Mandarin and one in Cantonese (I know nothing of
-        -- those languages or culture, but seems a cool idea as a foreigner, but
-        -- I don't know how forced it might read).
 
-        -- TODO: Add more examples with emoji. If possible, use all of the
-        -- "constants" from the top of the file.
+        -- CJK: hiragana ("kawaii"), katakana ("rāmen"), kanji ("nihongo"),
+        -- Mandarin ("Peking duck"), and Cantonese (唔該, "thank you"; 唔 is
+        -- essentially unused in Mandarin). All three bytes per codepoint.
+        {'かわいい', {1, 4, 7, 10}},
+        {'ラーメン', {1, 4, 7, 10}},
+        {'日本語', {1, 4, 7}},
+        {'北京烤鸭', {1, 4, 7, 10}},
+        {'唔該', {1, 4}},
+
+        -- Emoji are just multi byte codepoints to the iterator: modifiers,
+        -- ZWJ sequences and flags form graphemes, but that is `grapheme_at`'s
+        -- business, not this one's.
+        {thumbs_up_light_skin, {1, 5}},
+        {woman_and_girl, {1, 5, 8}},
+        {eu_flag, {1, 5}},
+        {a_acute_grave .. thumbs_up, {1, 2, 4, 6}},
         {'a' .. thumbs_up .. 'b', {1, 2, 6}},
 
         -- Null bytes are just one more one byte codepoint.
@@ -119,38 +150,45 @@ T['codepoint_positions()'] = new_set({
         {'\0ab', {1, 2, 3}},
         {'ab\0', {1, 2, 3}},
 
-        -- TODO: I dont' know which cases I want to cover here from here till
-        -- the end. I guess only the error cases? Is there something else? For
-        -- those error cases, I want to see first which ones you come up with. I
-        -- want you to try to showcase more or less all the possible things that
-        -- "can go wrong", and cover them with at least a couple of assertions
-        -- each. Like, a couple of examples for starting with a continuation
-        -- byte, having a lead byte alone, having a code point incomplete as it
-        -- would need more bytes (and that code point might get incomplete by
-        -- the ending of the string or the presence of the leading byte of
-        -- another code point, which might be complete, or also be incomplete!).
-        -- I'm not saying the next lines are wrong, I'm just asking you to fill
-        -- the gaps, if any. Don't go crazy, but try to be through in a balanced
-        -- way. Have fun. :-)
+        -- Invalid input follows the same byte level rules as
+        -- `sequence_length()` above; what matters here is that, whatever the
+        -- corruption, the walk resumes right after it: no byte is skipped.
 
-        -- A lead
-        -- byte interrupted by a non-continuation byte stands alone, and a
-        -- sequence truncated by the end of the string consumes its partial run.
-        {string.char(0xE2, 0x82, 0x41), {1, 2, 3}},
-        {string.char(0xE2, 0x82), {1}},
-        {string.char(0xF0, 0x80), {1}},
-        {string.char(0xC0, 0x80) .. 'a', {1, 3}},
-
-        -- A lead byte interrupted immediately by a non-continuation byte.
+        -- A lead byte interrupted by a non-continuation byte stands alone.
         {string.char(0xC3) .. 'A', {1, 2}},
         {string.char(0xC3) .. 'abc', {1, 2, 3, 4}},
         {string.char(0xE2, 0x41, 0x42), {1, 2, 3}},
+        {string.char(0xF0, 0x41, 0x42), {1, 2, 3}},
+        -- Interrupted after one or two continuation bytes.
+        {string.char(0xE2, 0x82, 0x41), {1, 2, 3}},
         {string.char(0xF0, 0x9F, 0x41, 0x42), {1, 2, 3, 4}},
+        {string.char(0xF0, 0x9F, 0x8C, 0x41), {1, 2, 3, 4}},
+        -- Interrupted by the leading byte of another sequence, complete...
+        {string.char(0xC3, 0xC3, 0xA5), {1, 2}},
+        {string.char(0xF0, 0xE2, 0x82, 0xAC), {1, 2}},
+        -- ...or incomplete.
+        {string.char(0xC3, 0xE2, 0x82), {1, 2}},
 
-        -- Complete sequences, even out of range, followed by more text; the
-        -- stranded continuation byte after C3 80 is a sequence of its own.
-        {string.char(0xF5, 0x80, 0x80, 0x80) .. 'a', {1, 5}},
+        -- A sequence truncated only by the end of the string consumes its
+        -- partial run of continuation bytes.
+        {string.char(0xC3), {1}},
+        {string.char(0xE2), {1}},
+        {string.char(0xE2, 0x82), {1}},
+        {string.char(0xF0, 0x80), {1}},
+        {string.char(0xF0, 0x9F, 0x8C), {1}},
+
+        -- A stranded continuation byte is a sequence of one byte.
+        {string.char(0x80), {1}},
+        {string.char(0xE2, 0x41, 0x80), {1, 2, 3}},
         {string.char(0xC3, 0x80, 0x80) .. 'a', {1, 3, 4}},
+
+        -- Complete sequences, even when they encode invalid codepoints
+        -- (overlong encodings, surrogates, out of range), are consumed whole.
+        {string.char(0xC0, 0x80) .. 'a', {1, 3}},
+        {string.char(0xED, 0xA0, 0x80) .. '!', {1, 4}},
+        {string.char(0xF5, 0x80, 0x80, 0x80) .. 'a', {1, 5}},
+        -- Lead bytes beyond the four byte design are measured as four bytes.
+        {string.char(0xF8, 0x88, 0x80, 0x80) .. 'a', {1, 5}},
     },
 })
 
@@ -160,6 +198,18 @@ T['codepoint_positions()']['produces the start of each codepoint'] = function(gi
         table.insert(result, position)
     end
     eq(result, expected)
+end
+
+-- The property all the rows above exhibit: the walk tiles the text exactly.
+-- Every position starts right after the end of the previous sequence, and the
+-- last sequence ends at the end of the text. No byte is skipped or revisited.
+T['codepoint_positions()']['never skips a byte'] = function(given)
+    local covered = 0
+    for position in unilove.codepoint_positions(given) do
+        eq(position, covered + 1)
+        covered = position + unilove.sequence_length(given, position) - 1
+    end
+    eq(covered, #given)
 end
 
 --------------------------------------------------------------------------------
