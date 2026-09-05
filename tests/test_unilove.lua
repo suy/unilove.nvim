@@ -214,40 +214,38 @@ end
 
 --------------------------------------------------------------------------------
 
-T['codepoints()'] = new_set()
+T['codepoints()'] = new_set({
+    parametrize = {
+        -- Empty text yields no codepoints.
+        {'', {}},
 
-T['codepoints()']['returns the codepoints in a string'] = function()
-    eq(unilove.codepoints('A' .. thumbs_up), { 0x41, 0x1F44D })
-end
+        -- Regular text, with a four byte emoji.
+        {'A' .. thumbs_up, {0x41, 0x1F44D}},
 
-T['codepoints()']['keeps combining marks and emoji modifiers as separate codepoints'] = function()
-    eq(unilove.codepoints(a_acute), { 0x61, 0x301 })
-    eq(unilove.codepoints(a_grave), { 0x61, 0x300 })
-    eq(unilove.codepoints(thumbs_up_light_skin), { 0x1F44D, 0x1F3FB })
-end
+        -- Combining marks and emoji modifiers are separate codepoints.
+        {a_acute, {0x61, 0x301}},
+        {a_grave, {0x61, 0x300}},
+        {a_acute_grave, {0x61, 0x301, 0x300}},
+        {thumbs_up_light_skin, {0x1F44D, 0x1F3FB}},
 
-T['codepoints()']['keeps multiple combining marks as separate codepoints'] = function()
-    eq(unilove.codepoints(a_acute_grave), { 0x61, 0x301, 0x300 })
-end
+        -- ZWJ sequences are plain codepoints to this function.
+        {woman_and_girl, {0x1F469, 0x200D, 0x1F467}},
 
-T['codepoints()']['keeps the codepoints in a ZWJ sequence'] = function()
-    eq(unilove.codepoints(woman_and_girl), { 0x1F469, 0x200D, 0x1F467 })
-end
+        -- Null bytes in every position.
+        {'\0', {0}},
+        {'a\0b', {0x61, 0x00, 0x62}},
+        {'\0ab', {0x00, 0x61, 0x62}},
+        {'ab\0', {0x61, 0x62, 0x00}},
 
-T['codepoints()']['handles the null byte correctly in different positions'] = function()
-    eq(unilove.codepoints('\0'), { 0 })
-    eq(unilove.codepoints('a\0b'), { 0x61, 0x00, 0x62 })
-    eq(unilove.codepoints('\0ab'), { 0x00, 0x61, 0x62 })
-    eq(unilove.codepoints('ab\0'), { 0x61, 0x62, 0x00 })
-end
+        -- Invalid lead bytes are reported as their own values, losing
+        -- nothing that follows.
+        {string.char(0xC3) .. 'abc', {0xC3, 0x61, 0x62, 0x63}},
+        {string.char(0xE2, 0x82, 0x41), {0xE2, 0x82, 0x41}},
+    },
+})
 
-T['codepoints()']['reports an invalid lead byte as its own value, losing no characters'] = function()
-    eq(unilove.codepoints(string.char(0xC3) .. 'abc'), { 0xC3, 0x61, 0x62, 0x63 })
-    eq(unilove.codepoints(string.char(0xE2, 0x82, 0x41)), { 0xE2, 0x82, 0x41 })
-end
-
-T['codepoints()']['returns an empty array for an empty string'] = function()
-    eq(unilove.codepoints(''), {})
+T['codepoints()']['returns the codepoints of the text'] = function(text, expected)
+    eq(unilove.codepoints(text), expected)
 end
 
 --------------------------------------------------------------------------------
@@ -256,128 +254,94 @@ end
 -- speaking, there is no need to test it very thoroughly. However, we test that
 -- it does what we expect it to do in quite a few cases to prevent surprises, or
 -- in case that we need to replace the implementation for some reason.
-T['first_grapheme()'] = new_set()
+T['first_grapheme()'] = new_set({
+    parametrize = {
+        -- Empty text.
+        {'', ''},
 
-T['first_grapheme()']['requires a string'] = function()
-    expect.error(function()
-        unilove.first_grapheme(1)
-    end, 'assertion failed')
-end
+        -- Null bytes are accepted in any position.
+        {'\0', '\0'},
+        {'\0ab', '\0'},
+        {'a\0b', 'a'},
+        {'ab\0', 'a'},
 
-T['first_grapheme()']['returns an empty string for empty text'] = function()
-    eq(unilove.first_grapheme(''), '')
-end
+        -- ASCII letters and punctuation.
+        {'abc', 'a'},
+        {'@bc', '@'},
+        {'^bc', '^'},
+        {'.bc', '.'},
+        {';bc', ';'},
 
-T['first_grapheme()']['is able to accept null bytes'] = function()
-    eq(unilove.first_grapheme('\0'), '\0')
-    eq(unilove.first_grapheme('\0ab'), '\0')
-    eq(unilove.first_grapheme('a\0b'), 'a')
-    eq(unilove.first_grapheme('ab\0'), 'a')
-end
+        -- "Simple" graphemes above the ASCII range. Europe.
+        {'ábé', 'á'},
+        {'åbé', 'å'},
+        {'Æøß', 'Æ'},
+        {'Çbé', 'Ç'},
+        -- IPA.
+        {'əɮ', 'ə'},
+        {'ɮə', 'ɮ'},
+        -- Asia.
+        {'ヵbé', 'ヵ'},
+        {'ヌbé', 'ヌ'},
+        {'ㄅㄗß', 'ㄅ'},
 
-T['first_grapheme()']['works on an ASCII-only string'] = function()
-    eq(unilove.first_grapheme('abc'), 'a')
-    eq(unilove.first_grapheme('@bc'), '@')
-    eq(unilove.first_grapheme('^bc'), '^')
-    eq(unilove.first_grapheme('.bc'), '.')
-    eq(unilove.first_grapheme(';bc'), ';')
-end
+        -- Combining marks stay with their base.
+        {a_acute .. 'b', a_acute},
+        {a_grave .. 'b', a_grave},
+        {a_acute_grave .. 'b', a_acute_grave},
 
-T['first_grapheme()']['works on "simple" graphemes above the ASCII range'] = function()
-    -- Europe.
-    eq(unilove.first_grapheme('ábé'), 'á')
-    eq(unilove.first_grapheme('åbé'), 'å')
-    eq(unilove.first_grapheme('Æøß'), 'Æ')
-    eq(unilove.first_grapheme('Çbé'), 'Ç')
-    -- IPA.
-    eq(unilove.first_grapheme('əɮ'), 'ə')
-    eq(unilove.first_grapheme('ɮə'), 'ɮ')
-    -- Asia.
-    eq(unilove.first_grapheme('ヵbé'), 'ヵ')
-    eq(unilove.first_grapheme('ヌbé'), 'ヌ')
-    eq(unilove.first_grapheme('ㄅㄗß'), 'ㄅ')
-end
+        -- Emoji modifiers and ZWJ sequences stay together.
+        {thumbs_up_light_skin .. 'x', thumbs_up_light_skin},
+        {woman_and_girl .. 'x', woman_and_girl},
+    },
+})
 
-T['first_grapheme()']['keeps combining marks with their base character'] = function()
-    eq(unilove.first_grapheme(a_acute .. 'b'), a_acute)
-    eq(unilove.first_grapheme(a_grave .. 'b'), a_grave)
-    eq(unilove.first_grapheme(a_acute_grave .. 'b'), a_acute_grave)
-end
-
-T['first_grapheme()']['keeps emoji modifiers and ZWJ sequences together'] = function()
-    eq(unilove.first_grapheme(thumbs_up_light_skin .. 'x'), thumbs_up_light_skin)
-    eq(unilove.first_grapheme(woman_and_girl .. 'x'), woman_and_girl)
+T['first_grapheme()']['returns the first grapheme of the text'] = function(text, expected)
+    eq(unilove.first_grapheme(text), expected)
 end
 
 --------------------------------------------------------------------------------
 
-T['grapheme_at()'] = new_set()
+-- Rows for `grapheme_at()`: point cases first, and then one row per byte of
+-- the multi byte graphemes, to check the "at every byte" property while
+-- keeping the failures pinpointing the exact column.
+local grapheme_at_rows = {
+    -- One-based byte columns.
+    {'abc', 1, 'a'},
+    {'abc', 2, 'b'},
+    {'abc', 3, 'c'},
 
-T['grapheme_at()']['finds ASCII characters using one-based byte columns'] = function()
-    eq(unilove.grapheme_at('abc', 1), 'a')
-    eq(unilove.grapheme_at('abc', 2), 'b')
-    eq(unilove.grapheme_at('abc', 3), 'c')
-end
+    -- Empty text and columns past the end yield a newline.
+    {'', 1, '\n'},
+    {'a', 2, '\n'},
+    {thumbs_up, 5, '\n'},
 
-T['grapheme_at()']['returns the complete grapheme at each byte in a combining sequence'] = function()
-    local text = a_acute .. 'b'
-    for column = 1, #a_acute do
-        eq(unilove.grapheme_at(text, column), a_acute)
-    end
-    eq(unilove.grapheme_at(text, #a_acute + 1), 'b')
-end
+    -- An invalid lead byte stands alone; ASCII resumes byte-wise.
+    {string.char(0xC3) .. 'abc', 1, string.char(0xC3)},
+    {string.char(0xC3) .. 'abc', 2, 'a'},
+    {string.char(0xC3) .. 'abc', 3, 'b'},
+    {string.char(0xC3) .. 'abc', 4, 'c'},
 
-T['grapheme_at()']['keeps multiple combining marks together at every byte'] = function()
-    local text = a_acute_grave .. 'b'
-    for column = 1, #a_acute_grave do
-        eq(unilove.grapheme_at(text, column), a_acute_grave)
-    end
-    eq(unilove.grapheme_at(text, #a_acute_grave + 1), 'b')
-end
+    -- The column right after a grapheme starts the next one.
+    {a_acute .. 'b', 4, 'b'},
 
-T['grapheme_at()']['returns a multibyte codepoint at all of its byte columns'] = function()
-    local text = 'A' .. thumbs_up .. 'B'
-    for column = 2, #thumbs_up + 1 do
-        eq(unilove.grapheme_at(text, column), thumbs_up)
-    end
-    eq(unilove.grapheme_at(text, #thumbs_up + 2), 'B')
-end
+    -- Null byte inside a line.
+    {'a\0b', 2, '\0'},
+}
 
-T['grapheme_at()']['keeps an emoji modifier sequence together at every byte'] = function()
-    for column = 1, #thumbs_up_light_skin do
-        eq(unilove.grapheme_at(thumbs_up_light_skin, column), thumbs_up_light_skin)
+-- Every byte column inside these graphemes returns the whole grapheme.
+for _, grapheme in ipairs({ a_acute, a_acute_grave, thumbs_up_light_skin, woman_and_girl, eu_flag }) do
+    for column = 1, #grapheme do
+        table.insert(grapheme_at_rows, { grapheme, column, grapheme })
     end
 end
 
-T['grapheme_at()']['keeps a ZWJ sequence together at every byte'] = function()
-    for column = 1, #woman_and_girl do
-        eq(unilove.grapheme_at(woman_and_girl, column), woman_and_girl)
-    end
-end
+T['grapheme_at()'] = new_set({
+    parametrize = grapheme_at_rows,
+})
 
-T['grapheme_at()']['keeps regional indicators together as a flag'] = function()
-    for column = 1, #eu_flag do
-        eq(unilove.grapheme_at(eu_flag, column), eu_flag)
-    end
-end
-
-T['grapheme_at()']['uses a newline for empty lines and columns past the line'] = function()
-    local newline = '\n'
-    eq(unilove.grapheme_at('', 1), newline)
-    eq(unilove.grapheme_at('a', 2), newline)
-    eq(unilove.grapheme_at(thumbs_up, #thumbs_up + 1), newline)
-end
-
-T['grapheme_at()']['finds the character after an invalid lead byte'] = function()
-    local text = string.char(0xC3) .. 'abc'
-    eq(unilove.grapheme_at(text, 1), string.char(0xC3))
-    eq(unilove.grapheme_at(text, 2), 'a')
-    eq(unilove.grapheme_at(text, 3), 'b')
-    eq(unilove.grapheme_at(text, 4), 'c')
-end
-
-T['grapheme_at()']['returns the null byte inside a line'] = function()
-    eq(unilove.grapheme_at('a\0b', 2), '\0')
+T['grapheme_at()']['returns the grapheme at a one-based byte column'] = function(text, column, expected)
+    eq(unilove.grapheme_at(text, column), expected)
 end
 
 --------------------------------------------------------------------------------
@@ -412,26 +376,27 @@ T['format_one()']['adds configured HTML entities'] = function()
     eq(unilove.format_one(0x40), '@\t64\t&commat;')
 end
 
-T['format()'] = new_set()
+T['format()'] = new_set({
+    hooks = {
+        pre_case = function()
+            config.setup({ show_name = false })
+        end,
+    },
+    parametrize = {
+        -- One line per codepoint.
+        {'AB', 'A\t65\nB\t66'},
 
-T['format()']['returns one line per codepoint'] = function()
-    config.setup({ show_name = false })
-    eq(unilove.format('AB'), 'A\t65\nB\t66')
-end
+        -- Each codepoint of a grapheme gets its own line.
+        {a_acute, 'a\t97\n' .. combining_acute .. '\t769'},
+        {a_acute_grave, 'a\t97\n' .. combining_acute .. '\t769\n' .. combining_grave .. '\t768'},
 
-T['format()']['formats each codepoint in a grapheme independently'] = function()
-    config.setup({ show_name = false })
-    eq(unilove.format(a_acute), 'a\t97\n' .. combining_acute .. '\t769')
-end
+        -- Empty text.
+        {'', ''},
+    },
+})
 
-T['format()']['formats each codepoint in a multi-combining grapheme independently'] = function()
-    config.setup({ show_name = false })
-    local expected = 'a\t97\n' .. combining_acute .. '\t769\n' .. combining_grave .. '\t768'
-    eq(unilove.format(a_acute_grave), expected)
-end
-
-T['format()']['returns an empty string for empty text'] = function()
-    eq(unilove.format(''), '')
+T['format()']['formats each codepoint on its own line'] = function(text, expected)
+    eq(unilove.format(text), expected)
 end
 
 return T

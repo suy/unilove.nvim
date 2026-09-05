@@ -11,13 +11,15 @@ local LEADING4 = 0xF0
 
 
 
--- Calculates the expected codepoint length in bytes when given the first byte
--- of the codepoint. Note that this treats every byte value below the first
--- leading byte value (LEADING2) as 1. However, in other circumstances, a check
--- like this would only admit the ASCII range as size 1, and *reject* the
--- continuation bytes, as those are invalid as first byte. We support them, as
--- we try to be "correct" (not useless) with invalid UTF-8. We don't special
--- case invalid leading bytes like 0xC0 and 0xC1 either.
+--- Calculates the expected codepoint length in bytes when given the first byte
+--- of the codepoint. Note that this treats every byte value below the first
+--- leading byte value (LEADING2) as 1. However, in other circumstances, a check
+--- like this would only admit the ASCII range as size 1, and *reject* the
+--- continuation bytes, as those are invalid as first byte. We support them, as
+--- we try to be "correct" (not useless) with invalid UTF-8. We don't special
+--- case invalid leading bytes like 0xC0 and 0xC1 either.
+--- @param byte integer First byte of a sequence.
+--- @return integer Length in bytes (1 to 4).
 local function expected_length(byte)
     if     byte < LEADING2 then return 1
     elseif byte < LEADING3 then return 2
@@ -26,11 +28,14 @@ local function expected_length(byte)
     end
 end
 
--- Length in bytes of the UTF-8 sequence starting at `start`. Mirrors how
--- `vim.str_utf_pos` treats invalid input, so that no byte is ever skipped:
--- sequences interrupted by a non-continuation byte leave the lead byte
--- standalone (byte-wise), while sequences truncated only by the end of the
--- string consume their partial run of continuation bytes.
+--- Length in bytes of the UTF-8 sequence starting at `start`. Mirrors how
+--- `vim.str_utf_pos` treats invalid input, so that no byte is ever skipped:
+--- sequences interrupted by a non-continuation byte leave the lead byte
+--- standalone (byte-wise), while sequences truncated only by the end of the
+--- string consume their partial run of continuation bytes.
+--- @param text string
+--- @param start integer Byte position of the sequence lead byte (1-indexed).
+--- @return integer Length in bytes (1 to 4).
 function M.sequence_length(text, start)
     local byte = text:byte(start)
     if byte < CONTINUATION then -- ASCII.
@@ -53,8 +58,10 @@ function M.sequence_length(text, start)
     return expected
 end
 
--- Returns an iterator over the codepoint positions in `text`. Unlike
--- `vim.str_utf_pos`, it's safe for strings containing null bytes.
+--- Returns an iterator over the codepoint positions in `text`. Unlike
+--- `vim.str_utf_pos`, it's safe for strings containing null bytes.
+--- @param text string
+--- @return fun(): integer? Byte position of the next codepoint start, or nil when exhausted.
 function M.codepoint_positions(text)
     local position = 1
     return function()
@@ -67,6 +74,10 @@ function M.codepoint_positions(text)
     end
 end
 
+--- Codepoints (scalar values) of every sequence in `text`, in order. Invalid
+--- bytes are reported as their own byte value, losing nothing that follows.
+--- @param text string
+--- @return integer[] Codepoint values, in order.
 function M.codepoints(text)
     local result = {}
     for start in M.codepoint_positions(text) do
@@ -84,11 +95,13 @@ end
 
 
 
--- Since `vim.fn.matchstr` doesn't accept anything containing NUL (it gets
--- converted to `Blob` when passed to VimL), we handle them ourselves: a leading
--- NUL is a complete grapheme by itself (control bytes always break clusters),
--- and a later NUL can only sit at or after the end of the first grapheme, so
--- truncating just before it leaves the first grapheme intact for `matchstr`.
+--- Since `vim.fn.matchstr` doesn't accept anything containing NUL (it gets
+--- converted to `Blob` when passed to VimL), we handle them ourselves: a leading
+--- NUL is a complete grapheme by itself (control bytes always break clusters),
+--- and a later NUL can only sit at or after the end of the first grapheme, so
+--- truncating just before it leaves the first grapheme intact for `matchstr`.
+--- @param text string
+--- @return string The first grapheme cluster; empty string for empty text.
 function M.first_grapheme(text)
     assert(type(text) == 'string')
     local null = text:find('\0')
@@ -101,6 +114,10 @@ function M.first_grapheme(text)
     return vim.fn.matchstr(text, '.')
 end
 
+--- @param line string The buffer line contents.
+--- @param column integer Byte column into `line` (1-indexed).
+--- @return string The grapheme cluster at the column, or a newline for empty
+---   lines and columns past the end.
 function M.grapheme_at(line, column)
     -- Empty lines or lines where the cursor is beyond the line length (e.g.
     -- `virtualedit=onemore`).
@@ -122,6 +139,7 @@ function M.grapheme_at(line, column)
     return '\n'
 end
 
+--- @return string The grapheme under the cursor, or a newline (see `grapheme_at`).
 function M.cursor_grapheme()
     local line = vim.api.nvim_get_current_line()
     local column = vim.api.nvim_win_get_cursor(0)[2] + 1
@@ -130,10 +148,15 @@ end
 
 
 
+--- @param codepoint integer
+--- @return string The "character" for the codepoint, via `nr2char`.
 local function codepoint_to_character(codepoint)
     return vim.fn.nr2char(codepoint)
 end
 
+--- @param codepoint integer
+--- @return string Printable form: 'NUL' for codepoint 0, `strtrans` of the
+---   character otherwise.
 local function prettify(codepoint)
     if codepoint == 0 then
         return 'NUL'
@@ -141,10 +164,15 @@ local function prettify(codepoint)
     return vim.fn.strtrans(codepoint_to_character(codepoint))
 end
 
+--- @param codepoint integer
+--- @return string Three digit octal escape (like `\101`).
 local function to_octal(codepoint)
     return ('\\%03o'):format(codepoint)
 end
 
+--- @param codepoint integer
+--- @return string One line of the `:Unilove` output: fields joined by the
+---   configured separator.
 function M.format_one(codepoint)
     local parts = {}
     table.insert(parts, prettify(codepoint))
@@ -179,6 +207,9 @@ function M.format_one(codepoint)
     return table.concat(parts, config.separator)
 end
 
+--- @param text string
+--- @return string One line per codepoint, joined by newlines; a single line
+---   for a single codepoint.
 function M.format(text)
     assert(text)
     local codepoints = M.codepoints(text)
@@ -195,6 +226,7 @@ function M.format(text)
     return table.concat(lines, '\n')
 end
 
+--- @param text? string Text to describe; defaults to the grapheme under the cursor.
 function M.describe(text)
     if text == nil or text == '' then
         text = M.cursor_grapheme()
