@@ -1,6 +1,7 @@
 ---@class UniloveConfigOptions
 ---@field unicode_data_path? string
 ---@field format? fun(text: string): string
+---@field format_one? fun(text: integer): string
 ---@field separator? string
 ---@field show_digraphs? boolean
 ---@field show_html_entities? boolean
@@ -18,6 +19,7 @@ local empty = {}
 local defaults = {
     unicode_data_path = empty,
     format = empty,
+    format_one = empty,
     separator = '\t',
     show_digraphs = false,
     show_html_entities = false,
