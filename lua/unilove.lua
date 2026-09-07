@@ -154,18 +154,20 @@ local function codepoint_to_character(codepoint)
     return vim.fn.nr2char(codepoint)
 end
 
---- @param codepoint integer
---- @return string Printable form: 'NUL' for codepoint 0, `strtrans` of the
----   character otherwise.
+-- We need to special case `strtrans` because, due to implementation reasons,
+-- it doesn't support null bytes (the same limitation that we have with other
+-- functions) and because the editor represents NUL as NL internally (because
+-- the NL character is free, as it handles the buffer as an array of lines, so
+-- the NL is at the end of the string implicitly).
 local function prettify(codepoint)
     if codepoint == 0 then
-        return 'NUL'
+        return '^@'
+    elseif codepoint == 10 then
+        return '^J'
     end
     return vim.fn.strtrans(codepoint_to_character(codepoint))
 end
 
---- @param codepoint integer
---- @return string Three digit octal escape (like `\101`).
 local function to_octal(codepoint)
     return ('\\%03o'):format(codepoint)
 end

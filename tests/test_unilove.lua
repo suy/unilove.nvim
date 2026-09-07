@@ -355,7 +355,7 @@ end
 
 T['format_one()']['formats control characters readably'] = function()
     config.setup({ show_name = false })
-    eq(unilove.format_one(0), 'NUL\t0')
+    eq(unilove.format_one(0), '^@\t0')
     eq(unilove.format_one(1), '^A\t1')
     eq(unilove.format_one(127), '^?\t127')
 end
