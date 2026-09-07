@@ -19,7 +19,7 @@ local LEADING4 = 0xF0
 --- we try to be "correct" (not useless) with invalid UTF-8. We don't special
 --- case invalid leading bytes like 0xC0 and 0xC1 either.
 --- @param byte integer First byte of a sequence.
---- @return integer Length in bytes (1 to 4).
+--- @return integer length Length in bytes (1 to 4).
 local function expected_length(byte)
     if     byte < LEADING2 then return 1
     elseif byte < LEADING3 then return 2
@@ -35,7 +35,7 @@ end
 --- string consume their partial run of continuation bytes.
 --- @param text string
 --- @param start integer Byte position of the sequence lead byte (1-indexed).
---- @return integer Length in bytes (1 to 4).
+--- @return integer length Length in bytes (1 to 4).
 function M.sequence_length(text, start)
     local byte = text:byte(start)
     if byte < CONTINUATION then -- ASCII.
@@ -61,7 +61,7 @@ end
 --- Returns an iterator over the codepoint positions in `text`. Unlike
 --- `vim.str_utf_pos`, it's safe for strings containing null bytes.
 --- @param text string
---- @return fun(): integer? Byte position of the next codepoint start, or nil when exhausted.
+--- @return fun(): integer? iterator Byte position of the next codepoint start, or nil when exhausted.
 function M.codepoint_positions(text)
     local position = 1
     return function()
@@ -77,7 +77,7 @@ end
 --- Codepoints (scalar values) of every sequence in `text`, in order. Invalid
 --- bytes are reported as their own byte value, losing nothing that follows.
 --- @param text string
---- @return integer[] Codepoint values, in order.
+--- @return integer[] codepoints Codepoint values, in order.
 function M.codepoints(text)
     local result = {}
     for start in M.codepoint_positions(text) do
@@ -95,15 +95,18 @@ end
 
 
 
---- Since `vim.fn.matchstr` doesn't accept anything containing NUL (it gets
---- converted to `Blob` when passed to VimL), we handle them ourselves: a leading
---- NUL is a complete grapheme by itself (control bytes always break clusters),
---- and a later NUL can only sit at or after the end of the first grapheme, so
---- truncating just before it leaves the first grapheme intact for `matchstr`.
+--- The first grapheme of a string. Equivalent to `vim.fn.matchstr(text, '.')`,
+--- but supporting NUL bytes.
 --- @param text string
---- @return string The first grapheme cluster; empty string for empty text.
+--- @return string first First grapheme cluster, or empty string for empty text.
 function M.first_grapheme(text)
     assert(type(text) == 'string')
+    -- Since `vim.fn.matchstr` doesn't accept anything containing NUL bytes
+    -- (they get converted to `Blob` when passed to VimL), we handle them
+    -- ourselves: a leading NUL is a complete grapheme by itself (control bytes
+    -- always break clusters), and a later NUL can only sit at or after the end
+    -- of the first grapheme, so truncating just before it leaves the first
+    -- grapheme intact for `matchstr`.
     local null = text:find('\0')
     if null then
         if null == 1 then
@@ -114,10 +117,12 @@ function M.first_grapheme(text)
     return vim.fn.matchstr(text, '.')
 end
 
---- @param line string The buffer line contents.
+--- Returns a grapheme cluster at the given column of a line of text. For
+--- columns beyond the size of the line, it is considered that the user has set
+--- `virtualedit=onemore` to allow to go beyond, and returns `\n`.
+--- @param line string The line contents of a buffer.
 --- @param column integer Byte column into `line` (1-indexed).
---- @return string The grapheme cluster at the column, or a newline for empty
----   lines and columns past the end.
+--- @return string grapheme The grapheme cluster at the column.
 function M.grapheme_at(line, column)
     -- Empty lines or lines where the cursor is beyond the line length (e.g.
     -- `virtualedit=onemore`).
@@ -139,7 +144,8 @@ function M.grapheme_at(line, column)
     return '\n'
 end
 
---- @return string The grapheme under the cursor, or a newline (see `grapheme_at`).
+--- @return string grapheme The grapheme under the cursor, or a newline (see
+--- `grapheme_at`).
 function M.cursor_grapheme()
     local line = vim.api.nvim_get_current_line()
     local column = vim.api.nvim_win_get_cursor(0)[2] + 1
@@ -148,17 +154,16 @@ end
 
 
 
---- @param codepoint integer
---- @return string The "character" for the codepoint, via `nr2char`.
 local function codepoint_to_character(codepoint)
     return vim.fn.nr2char(codepoint)
 end
 
 -- We need to special case `strtrans` because, due to implementation reasons,
 -- it doesn't support null bytes (the same limitation that we have with other
--- functions) and because the editor represents NUL as NL internally (because
--- the NL character is free, as it handles the buffer as an array of lines, so
--- the NL is at the end of the string implicitly).
+-- functions) and because the editor represents NUL as NL internally. This is
+-- due to the NL character being the only free character, as it it's the only
+-- one that doesn't show in the lines, as the end of lines are the end of the
+-- string. So, effectively, NUL and NL are "swapped" in a sense.
 local function prettify(codepoint)
     if codepoint == 0 then
         return '^@'
@@ -172,9 +177,9 @@ local function to_octal(codepoint)
     return ('\\%03o'):format(codepoint)
 end
 
+--- Produce a one line description of the given codepoint.
 --- @param codepoint integer
---- @return string One line of the `:Unilove` output: fields joined by the
----   configured separator.
+--- @return string description
 function M.format_one(codepoint)
     local parts = {}
     table.insert(parts, prettify(codepoint))
@@ -209,7 +214,9 @@ function M.format_one(codepoint)
     return table.concat(parts, config.separator)
 end
 
---- @param text string
+--- Default format function. Receives a text and breaks it down into codepoints,
+--- formatting them one by one into their description, one per line.
+--- @param text string Text to format.
 --- @return string One line per codepoint, joined by newlines; a single line
 ---   for a single codepoint.
 function M.format(text)
@@ -228,7 +235,10 @@ function M.format(text)
     return table.concat(lines, '\n')
 end
 
---- @param text? string Text to describe; defaults to the grapheme under the cursor.
+--- Prints the description of the given text according to the configured format
+--- function. If no text is provided, or if it is empty, the grapheme at the
+--- cursor position is described instead.
+--- @param text? string Text to describe.
 function M.describe(text)
     if text == nil or text == '' then
         text = M.cursor_grapheme()
