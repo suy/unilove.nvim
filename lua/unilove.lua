@@ -106,8 +106,9 @@ function M.format(text)
     local codepoints = M.codepoints(text)
     local lines = {}
 
+    local format_one = config.format_one or M.format_one
     for _, codepoint in ipairs(codepoints) do
-        table.insert(lines, M.format_one(codepoint))
+        table.insert(lines, format_one(codepoint))
     end
 
     if #codepoints == 1 then
