@@ -115,10 +115,10 @@ end
 function M.decide_path(custom)
     if readable(custom) then
         return custom
-    elseif readable(packaged) then
-        return packaged
     elseif readable(user_path()) then
         return user_path()
+    elseif readable(packaged) then
+        return packaged
     end
 end
 
