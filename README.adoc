@@ -1,0 +1,104 @@
+= Unilove.nvim
+:toc: right
+:toc-title:
+:toclevels: 3
+:sectanchors:
+:sectnums:
+:idprefix:
+:source-highlighter: highlight.js
+
+Unicode love at your fingertips. A better `ga` out of the box, with lots of
+customization options, and a mini.pick picker for Unicode code points. With
+(perhaps) more to come.
+
+== Features
+
+* Describes text based on the name provided by the Unicode standard, with some
+  (optional) extras: digraphs, HTML entities, octal, decimal and hexadecimal
+  notation.
+* Highly configurable output format with reasonable defaults.
+* Describes the grapheme cluster under the cursor with either a command
+  (`:Unilove`) or a custom normal mode mapping (`<Plug>(unilove-describe)`). In
+  visual mode, it describes the selected text.
+* Describes arbitrary text passed to the command (e.g. `:Unilove 🏴‍☠️👍🏽`), so you
+  don't have to paste text to a buffer if you don't want to.
+* Zero setup required. If `ga` is not mapped to anything, it gets remapped
+  automatically to `<Plug>(unilove-describe)`.
+* Defaults to reading `UnicodeData.txt` from a system path (to avoid file
+  duplication and setup), but allows automatically downloading the data file to
+  a user-writable location via the `:Unilove!` command. That way you can have
+  both choices: a system path or a user controlled one (which can be more up to
+  date).
+* Doesn't load anything until needed (so called "lazy" or on-demand loading).
+* Provides a code point picker based on
+  https://nvim-mini.org/mini.nvim/readmes/mini-pick.html[mini.pick] which allows
+  entering the chosen code points into the buffer, or yanking them to the
+  clipboard register.
+
+
+== Installation and setup
+
+Install it like any other Neovim plugin. I just have it on a "package" directory
+(see `:h pack.txt`), but check out `:h vim.pack` if you want a plugin manager.
+
+The plugin doesn't load any non-trivial piece of code nor parses the Unicode
+data on start (only on demand) so no need to worry about lazy-loading: it's
+already implemented in Unilove.
+
+The default configuration should be fine for many people, but it can be changed
+like in this example:
+
+[source,lua]
+----
+-- Require the `unilove.config` module. Note: *not* `unilove`.
+require('unilove.config').setup({
+    unicode_data_path = '/tmp/UnicodeData.txt',
+    format = my_format_function,
+    show_octal = true,
+    show_digraphs = true,
+})
+-- Optional. Auto-register in the `MiniPick.registry` global, and provide the
+-- `:Pick unilove` command. Requires `mini.pick` being available.
+require('unilove.pick')
+----
+
+Note that loading the configuration module is *very* minimal, and doesn't
+load the whole plugin, nor parses the Unicode data file, so the plugin still
+"lazy loads" when you actually invoke it (if at all), not on startup. Also,
+configuration is entirely optional.
+
+In order for the plugin to know about Unicode names, the Unicode data needs to
+be installed (it's just a large text file). On Linux systems it comes in the
+`unicode-data` package. You can also download it inside Neovim running
+`:Unilove!`, which will fetch it from the Unicode web site, and store it on a
+file under Neovim's data directory, unless configured otherwise (the default is
+the `unicode` directory under `:echo stdpath('data')`).
+
+
+== Known limitations
+
+Grapheme clustering is delegated to Neovim's regular expression engine, which
+follows a limited subset of the https://www.unicode.org/reports/tr29/[Unicode
+segmentation rules (UAX #29)]. Known deviations: CR followed by LF is reported
+as two clusters instead of one, and Prepend characters (e.g. U+0600 ARABIC
+NUMBER SIGN) do not join the character that follows. Neither affects typical
+use. Native `ga` does not cluster at all.
+
+
+== Invalid UTF-8 support
+
+In order to be lenient on files opened with the wrong encoding, or even
+inspecting binary files, the plugin tries to be resilient to invalid UTF-8. That
+said, it has not been tested extensively on lots of binary files. It is not
+intended to be a plugin to turn Neovim into an hexadecimal editor, but feel free
+to fill suggestions about what can be improved to make it more compatible.
+
+
+== Credits, useful sources and acknowledgements
+
+* Largely inspired by
+  https://github.com/tpope/vim-characterize[characterize.vim], by Tim Pope.
+* https://gist.github.com/kennypete/d7c3eef8fc5d9bf25dbea8fac0f1fa25[String
+  measurement in Neovim]
+
+
