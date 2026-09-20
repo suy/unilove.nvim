@@ -11,6 +11,8 @@ Unicode love at your fingertips. A better `ga` out of the box, with lots of
 customization options, and a mini.pick picker for Unicode code points. With
 (perhaps) more to come.
 
+image::screenshot1.png[Plugin preview,align="center"]
+
 == Features
 
 * Describes text based on the name provided by the Unicode standard, with some
@@ -70,9 +72,9 @@ configuration is entirely optional.
 In order for the plugin to know about Unicode names, the Unicode data needs to
 be installed (it's just a large text file). On Linux systems it comes in the
 `unicode-data` package. You can also download it inside Neovim running
-`:Unilove!`, which will fetch it from the Unicode web site, and store it on a
-file under Neovim's data directory, unless configured otherwise (the default is
-the `unicode` directory under `:echo stdpath('data')`).
+`:Unilove!`, which will fetch it from the Unicode web site (requires `curl` or
+`wget`) and store it in a file under Neovim's data directory (it will be a
+subdirectory called `unicode` under `:echo stdpath('data')`).
 
 
 == Known limitations
@@ -96,9 +98,15 @@ to fill suggestions about what can be improved to make it more compatible.
 
 == Credits, useful sources and acknowledgements
 
-* Largely inspired by
-  https://github.com/tpope/vim-characterize[characterize.vim], by Tim Pope.
-* https://gist.github.com/kennypete/d7c3eef8fc5d9bf25dbea8fac0f1fa25[String
-  measurement in Neovim]
+© 2026 Alejandro Exojo Piqueras, and published under the MIT license.
+
+* This plugin was largely inspired by
+  https://github.com/tpope/vim-characterize[characterize.vim], by Tim Pope, and
+  an ancient extension for CtrlP that I wrote long ago.
+* Many thanks to Evgeni Chasnovski for https://nvim-mini.org/mini.nvim/[mini],
+  which this plugin leverages for the picker.
+* Thanks also to Peter Kenny for the
+  https://gist.github.com/kennypete/d7c3eef8fc5d9bf25dbea8fac0f1fa25[String
+  measurement in Neovim] post on Gist.
 
 
